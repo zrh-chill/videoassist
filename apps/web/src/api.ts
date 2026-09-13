@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
-export async function api<T>(url: string, body?: unknown): Promise<T> {
+export async function api<T>(url: string, body?: unknown, method = 'POST'): Promise<T> {
   const response = await fetch('/api/v1' + url, body === undefined ? undefined : {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
+    method, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
     body: JSON.stringify(body),
   });
   const payload = await response.json();
