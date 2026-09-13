@@ -145,6 +145,7 @@ model TranscriptSegment {
 }
 model PromptVersion {
   id String @id @default(uuid())
+  revision Int @unique
   name String @default("视频总结")
   body String
   hash String @unique
@@ -178,4 +179,12 @@ model Checkpoint {
   outputJson String
   createdAt DateTime @default(now())
   @@index([videoId, kind])
+}
+
+model SystemSettings {
+  id String @id @default("singleton")
+  revision Int @default(0)
+  valuesJson String @default("{}")
+  activePromptId String?
+  testsJson String @default("{}")
 }
