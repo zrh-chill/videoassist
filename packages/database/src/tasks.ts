@@ -1,6 +1,7 @@
 import type { Prisma, Job } from '@prisma/client';
 import type { Database } from './client.js';
 import { persistMedia } from './media.js';
+import { videoWhere } from './video-query.js';
 import type { Stage, StageResult, VideoStatus } from '../../contracts/src/index.js';
 import { DomainError, fingerprint, nextStage, retryDelay, stageStatus } from '../../domain/src/index.js';
 
@@ -55,11 +56,7 @@ export class Tasks {
   }
 
   async list(query: { q: string; status?: string; sourceType?: string; cursor?: string; limit: number }) {
-    const where: Prisma.VideoWhereInput = {
-      ...(query.q ? { title: { contains: query.q } } : {}),
-      ...(query.status ? { overallStatus: query.status } : {}),
-      ...(query.sourceType ? { sourceType: query.sourceType } : {}),
-    };
+    const where = videoWhere(query);
     const [items, total] = await this.db.$transaction([
       this.db.video.findMany({
         where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
