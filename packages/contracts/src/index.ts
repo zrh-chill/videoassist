@@ -20,6 +20,8 @@ export const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 export interface VideoDto {
+  coverUrl?: string | null; durationMs?: number | null; creatorName?: string | null;
+  publishedAt?: string | null; oneSentence?: string | null;
   id: string; title: string; sourceType: string; overallStatus: VideoStatus;
   currentStage: Stage | null; latestErrorCode: string | null;
   latestErrorMessage: string | null; createdAt: string; updatedAt: string;
