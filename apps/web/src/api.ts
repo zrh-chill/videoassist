@@ -2,12 +2,20 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
 export async function api<T>(url: string, body?: unknown, method = 'POST'): Promise<T> {
-  const response = await fetch('/api/v1' + url, body === undefined ? undefined : {
+  let response: Response;
+  try { response = await fetch('/api/v1' + url, body === undefined ? undefined : {
     method, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
     body: JSON.stringify(body),
-  });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error?.message || '请求失败');
+  }); } catch { throw new Error('无法连接服务，请检查网络或稍后重试'); }
+  if (response.status === 204) return undefined as T;
+  const fallback = response.status >= 500 ? '后台服务暂不可用，请稍后重试' : '请求失败（HTTP ' + response.status + '）';
+  let payload: unknown;
+  try { payload = await response.json(); }
+  catch { throw new Error(response.ok ? '服务返回了无效数据，请稍后重试' : fallback); }
+  if (!response.ok) {
+    const message = (payload as { error?: { message?: unknown } } | null)?.error?.message;
+    throw new Error(typeof message === 'string' && message ? message : fallback);
+  }
   return payload as T;
 }
 export function useEvents() {
