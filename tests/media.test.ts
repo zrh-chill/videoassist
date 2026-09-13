@@ -156,6 +156,7 @@ test('长文稿按令牌切片保持原文，Map-Reduce 生成有效结构', asy
   const text = '这是用于验证长内容的具体事实与步骤。'.repeat(400);
   const chunks = splitText(text, 100);
   assert.equal(chunks.join(''), text); assert.ok(chunks.every(chunk => tokenCount(chunk) <= 100));
+  assert.equal(splitText('\n。！？\n' + text, 100).join(''), '\n。！？\n' + text);
   const result = await summarizeText({ text, prompt: '只依据材料总结并输出 JSON', title: '长视频', source: 'LOCAL', creator: '未知', durationMs: 8000, language: '中文', cached: (_key, execute) => execute() },
     { ...config, summaryInputTokens: 4096 }, new AbortController().signal);
   assert.ok(result.chunkCount > 1); assert.ok(summarySchema.safeParse(result.content).success); assert.ok(llmCalls > 2);
