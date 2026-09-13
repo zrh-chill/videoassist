@@ -31,9 +31,9 @@ export async function bilibiliMetadata(url: string, config: AppConfig, signal: A
   const normalized = normalizeBilibiliUrl(url);
   try {
     const raw = await runTool(config.ytdlp, [...args(config), '--skip-download', '--dump-single-json', '--', normalized.url], { signal, code: 'DOWNLOAD_FAILED' });
-    const data = z.object({ title: z.string(), duration: z.number().positive(), uploader: z.string().optional(), timestamp: z.number().optional(), thumbnail: z.string().optional() }).parse(JSON.parse(raw));
+    const data = z.object({ title: z.string(), duration: z.number().positive(), uploader: z.string().optional(), uploader_id: z.coerce.string().regex(/^\d+$/).optional(), timestamp: z.number().optional(), thumbnail: z.string().optional() }).parse(JSON.parse(raw));
     return {
-      title: data.title.slice(0, 500), durationMs: Math.round(data.duration * 1000), creatorName: data.uploader,
+      title: data.title.slice(0, 500), durationMs: Math.round(data.duration * 1000), creatorName: data.uploader, creatorUid: data.uploader_id,
       publishedAt: data.timestamp ? new Date(data.timestamp * 1000).toISOString() : undefined, coverUrl: data.thumbnail,
     };
   } catch (error) { if (error instanceof z.ZodError || error instanceof SyntaxError) throw new DomainError('BILIBILI_RESPONSE_INVALID', '视频元数据格式不正确'); classifyBilibili(error); }
