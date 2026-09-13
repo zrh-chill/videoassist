@@ -30,14 +30,14 @@ export function CreatorsPage() {
     api('/creators/' + id + (name === 'check' ? '/actions/check' : ''), body || {}, name === 'edit' ? 'PATCH' : name === 'delete' ? 'DELETE' : 'POST'),
     onSuccess: (_result, input) => { setSelected(input.id); setNotice(input.name === 'check' ? '检查任务已排队，结果将在下方更新。' : '追踪设置已更新，既有视频保留。'); void client.invalidateQueries({ queryKey: ['creators'] }); void client.invalidateQueries({ queryKey: ['creator-checks'] }); } });
   return <>
-    <header className="topbar"><div><div className="eyebrow">CREATORS / FOLLOWING</div><h1>UP 主追踪</h1><p className="subtitle">手动获取最新投稿，按 BVID 去重。</p></div></header>
+    <header className="topbar"><div><div className="eyebrow">CREATORS / FOLLOWING</div><h1>UP 主追踪</h1></div></header>
     <form className="panel creator-add" onSubmit={event => { event.preventDefault(); add.mutate(event.currentTarget); }}>
       <label className="setting-field">UID 或主页链接<input name="source" required placeholder="https://space.bilibili.com/…" disabled={add.isPending}/></label>
       <label className="setting-field">最新视频数量<input name="limit" type="number" min={1} max={50} defaultValue={5} required disabled={add.isPending}/></label>
       <label className="checkbox"><input name="auto" type="checkbox" defaultChecked disabled={add.isPending}/>自动处理新增视频</label>
       <button className="btn primary" disabled={add.isPending}>{add.isPending ? '正在添加…' : '添加追踪'}</button>
     </form>
-    <p className="subtitle">关闭自动处理后，新视频以“已发现”状态保存，可从详情手动开始。暂停或停止追踪不会删除已导入视频。</p>
+    
     {(creators.error || add.error || action.error || checks.error) && <p className="error" role="alert">{(creators.error || add.error || action.error || checks.error)?.message}</p>}
     {notice && <p className="notice" role="status">{notice}</p>}
     {!creators.data?.length && <div className="panel empty">还没有追踪对象，先添加一个 UP 主。</div>}
@@ -68,11 +68,11 @@ export function MaintenancePage() {
     onSuccess: () => { setNotice('维护任务已排队，完成后会显示结果。'); void client.invalidateQueries({ queryKey: ['maintenance'] }); } });
   const active = (kind: string) => query.data?.operations.some(op => op.kind === kind && ['RUNNING', 'QUEUED'].includes(op.status));
   return <>
-    <header className="topbar"><div><div className="eyebrow">WORKSPACE / MAINTENANCE</div><h1>备份与维护</h1><p className="subtitle">保留内容，检查存储状态。</p></div></header>
-    <div className="settings-grid"><section className="panel"><h2>完整备份</h2><p>生成 SQLite 在线快照，并复制快照引用的全部原视频、音频和历史媒体。校验通过后才发布备份目录。</p>
+    <header className="topbar"><div><div className="eyebrow">WORKSPACE / MAINTENANCE</div><h1>备份与维护</h1></div></header>
+    <div className="settings-grid"><section className="panel"><h2>完整备份</h2>
       <p className="result-meta">备份位置：{query.data?.backupDirectory || '正在读取…'}</p><p className="subtitle">包含配置和密钥引用；.env 原文、密钥及 Cookie 文件需另行保管。恢复需停止服务，按 README 的恢复步骤操作。</p>
       <button className="btn primary" disabled={mutation.isPending || active('BACKUP')} onClick={() => mutation.mutate('backup')}>{active('BACKUP') ? '备份任务进行中…' : '创建备份'}</button></section>
-      <section className="panel"><h2>临时文件与日志</h2><p>每日自动检查，清理超过 24 小时的临时文件和超过 14 天的日志。跳过活跃任务、符号链接与媒体引用。</p>
+      <section className="panel"><h2>临时文件与日志</h2>
         <p className="subtitle">原视频、音频和备份不会被清理；未引用的永久媒体仅报告数量。日志按日期或 5 MiB 轮转。</p><p className="result-meta">日志目录：{query.data?.logDirectory || '正在读取…'}</p>
         <button className="btn" disabled={mutation.isPending || active('CLEANUP')} onClick={() => mutation.mutate('cleanup')}>{active('CLEANUP') ? '清理检查进行中…' : '立即清理检查'}</button></section></div>
     {(query.error || mutation.error) && <p className="error" role="alert">{(query.error || mutation.error)?.message}</p>}{notice && <p className="notice" role="status">{notice}</p>}
