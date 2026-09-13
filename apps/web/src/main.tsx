@@ -104,7 +104,7 @@ function Detail() {
     </div>
     {confirming && <div className="panel"><p>将重新执行「{names[video.currentStage || '']}」阶段，之前成功阶段的结果会被保留并复用。</p><button className="btn primary" disabled={action.isPending} onClick={() => action.mutate('retry')}>确认重试</button></div>}
     <section className="panel"><h2>执行记录 <span className="count">{runs.data?.length ?? 0}</span></h2>
-      {!runs.data?.length && <p className="subtitle">任务已持久化，等待 Worker 领取。</p>}
+      {!runs.data?.length && <p className="subtitle">{video.overallStatus === 'CANCELED' ? '任务已取消，尚未执行任何阶段。' : '任务已持久化，等待 Worker 领取。'}</p>}
       {runs.data?.map(run => <article className="run" key={run.id}><div><strong>{names[run.stage]} · 第 {run.attempt} 次</strong><Status status={run.status}/></div><p className="mono">{time(run.startedAt)}{run.finishedAt ? ' · 耗时 ' + Math.max(0, (Date.parse(run.finishedAt) - Date.parse(run.startedAt)) / 1000).toFixed(1) + ' 秒' : ' · 正在执行'}</p>
         {run.errorMessage && <p className="error">{run.errorMessage}</p>}{run.outputJson && <p>{(JSON.parse(run.outputJson) as { text: string }).text}</p>}</article>)}
     </section>
