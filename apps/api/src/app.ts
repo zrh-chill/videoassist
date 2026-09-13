@@ -55,7 +55,7 @@ export function createApp(db: Database, config: ReturnType<typeof loadConfig>) {
       return { status: 'ready' };
     } catch { return reply.code(503).send({ status: 'unavailable' }); }
   });
-  app.get(prefix + '/capabilities', async () => ({ simulation: config.simulation, phase: 2, media: true, uploadMaxBytes: config.uploadMaxBytes }));
+  app.get(prefix + '/capabilities', async () => ({ simulation: config.simulation, phase: 3, media: true, uploadMaxBytes: config.uploadMaxBytes }));
   app.get(prefix + '/videos', async request => tasks.list(listQuerySchema.parse(request.query)));
   app.post(prefix + '/videos/simulations', async (request, reply) => {
     if (!config.simulation) throw new DomainError('SIMULATION_DISABLED', '未启用模拟模式', false, 403);
