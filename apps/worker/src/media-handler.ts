@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, stat, unlink } from 'node:fs/promises';
+import { mkdir, rename, stat, unlink } from 'node:fs/promises';
+import { Settings } from '../../../packages/database/src/settings.js';
 import path from 'node:path';
 import type { Database } from '../../../packages/database/src/client.js';
 import type { AppConfig } from '../../../packages/config/src/index.js';
@@ -98,9 +99,7 @@ export function mediaHandler(db: Database, config: AppConfig): StageHandler {
     }
     const transcript = await db.transcript.findFirst({ where: { videoId: video.id, isCurrent: true } });
     if (!transcript) throw new DomainError('TRANSCRIPT_MISSING', '尚未生成有效文稿');
-    const document = await readFile(config.summaryPromptFile, 'utf8');
-    const prompt = /\x60\x60\x60text\r?\n([\s\S]*?)\r?\n\x60\x60\x60/.exec(document)?.[1] || document;
-    const version = await db.promptVersion.upsert({ where: { hash: fingerprint(prompt) }, update: {}, create: { body: prompt, hash: fingerprint(prompt) } });
+    const version = await new Settings(db, config).activePrompt();
     const started = Date.now();
     const summary = await summarizeText({
       text: transcript.fullText, prompt: version.body, title: video.title, source: video.sourceType,
