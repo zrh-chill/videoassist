@@ -10,6 +10,13 @@ model Video {
   title String
   sourceType String @default("SIMULATION")
   bvid String?
+  originalUrl String?
+  localOriginalName String?
+  sourceHash String?
+  durationMs Int?
+  creatorName String?
+  publishedAt DateTime?
+  coverUrl String?
   overallStatus String @default("WAITING")
   currentStage String?
   latestErrorCode String?
@@ -20,6 +27,10 @@ model Video {
   jobs Job[]
   runs StageRun[]
   results StageResult[]
+  artifacts Artifact[]
+  transcripts Transcript[]
+  summaries Summary[]
+  checkpoints Checkpoint[]
   @@unique([sourceType, bvid])
   @@index([overallStatus, createdAt])
   @@index([createdAt, id])
@@ -89,4 +100,81 @@ model Command {
   fingerprint String
   responseJson String
   expiresAt DateTime
+}
+
+model Artifact {
+  id String @id @default(uuid())
+  videoId String
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  kind String
+  storageKey String @unique
+  sizeBytes BigInt
+  sha256 String
+  mimeType String
+  createdAt DateTime @default(now())
+  deletedAt DateTime?
+  @@index([videoId, kind, createdAt])
+}
+model Transcript {
+  id String @id @default(uuid())
+  videoId String
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  revision Int
+  fullText String
+  language String
+  provider String
+  model String
+  durationMs Int
+  timestampPrecision String
+  isCurrent Boolean @default(true)
+  createdAt DateTime @default(now())
+  segments TranscriptSegment[]
+  summaries Summary[]
+  @@unique([videoId, revision])
+}
+model TranscriptSegment {
+  id String @id @default(uuid())
+  transcriptId String
+  transcript Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  sequence Int
+  startMs Int
+  endMs Int
+  text String
+  @@unique([transcriptId, sequence])
+}
+model PromptVersion {
+  id String @id @default(uuid())
+  name String @default("视频总结")
+  body String
+  hash String @unique
+  createdAt DateTime @default(now())
+  summaries Summary[]
+}
+model Summary {
+  id String @id @default(uuid())
+  videoId String
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  transcriptId String
+  transcript Transcript @relation(fields: [transcriptId], references: [id])
+  promptVersionId String
+  promptVersion PromptVersion @relation(fields: [promptVersionId], references: [id])
+  revision Int
+  provider String
+  model String
+  structuredJson String
+  renderedText String
+  durationMs Int
+  chunkCount Int
+  isCurrent Boolean @default(true)
+  createdAt DateTime @default(now())
+  @@unique([videoId, revision])
+}
+model Checkpoint {
+  id String @id
+  videoId String
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  kind String
+  outputJson String
+  createdAt DateTime @default(now())
+  @@index([videoId, kind])
 }
