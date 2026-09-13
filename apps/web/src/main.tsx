@@ -69,6 +69,14 @@ function AddVideoPage() {
     <ErrorNotice error={capability.error}/>
     <AddVideoForm maxBytes={capability.data?.uploadMaxBytes || 4 * 1024 ** 3} onDone={id => navigate('/videos/' + id)}/></>;
 }
+function VideoCover({ video }: { video: VideoDto }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  let cover: string | null = null;
+  try { const url = new URL(video.coverUrl || ''); if (['http:', 'https:'].includes(url.protocol)) { url.protocol = 'https:'; cover = url.href; } } catch { /* No cover available. */ }
+  const seconds = video.durationMs == null ? null : Math.floor(video.durationMs / 1000);
+  const duration = seconds == null ? null : (seconds >= 3600 ? Math.floor(seconds / 3600) + ':' : '') + String(Math.floor(seconds / 60) % 60).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
+  return <span className="video-cover">{cover && failedUrl !== cover ? <img src={cover} alt={video.title + '的封面'} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailedUrl(cover)}/> : <span className="cover-empty">暂无封面</span>}{duration && <span className="cover-duration">{duration}</span>}</span>;
+}
 function VideoList() {
   const [search, setSearch] = useSearchParams();
   const [exportHistory, setExportHistory] = useState(false);
@@ -99,10 +107,10 @@ function VideoList() {
       <button className="btn small" onClick={() => setSearch({})}>重置</button></div>
     <ErrorNotice error={query.error}/>
     {search.has('creatorId') && <p className="notice">正在显示所选 UP 主已导入的视频。<Link to="/creators">返回 UP 主追踪 →</Link></p>}
-    <div className="table-wrap video-table"><table><thead><tr><th>视频</th><th>来源</th><th>当前状态</th><th>创建时间</th><th><span className="sr-only">操作</span></th></tr></thead>
-      <tbody>{query.data?.items.map((video, index) => <tr key={video.id}>
-        <td><Link className="video-link" to={'/videos/' + video.id}><span aria-hidden="true" className={'thumb t' + (index % 4 + 1)}/><span className="video-copy"><strong title={video.title}>{video.title}</strong><small>{video.latestErrorMessage || (video.overallStatus === 'COMPLETED' ? '文稿与 AI 总结已保存' : names[video.overallStatus])}</small></span></Link></td>
-        <td><span className="source"><i className={'source-dot ' + (video.sourceType === 'BILIBILI' ? '' : 'local')}/>{sourceName[video.sourceType]}</span></td><td><Status status={video.overallStatus}/></td><td className="mono"><time dateTime={video.createdAt} title={time(video.createdAt)}>{new Date(video.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</time></td><td><Link className="icon-btn" aria-label={'查看详情：' + video.title} title="查看详情" to={'/videos/' + video.id}>↗</Link></td>
+    <div className="table-wrap video-table"><table><thead><tr><th>视频</th><th>当前状态</th><th>创建时间</th><th><span className="sr-only">操作</span></th></tr></thead>
+      <tbody>{query.data?.items.map(video => <tr key={video.id}>
+        <td><Link className="video-link" to={'/videos/' + video.id}><VideoCover video={video}/><span className="video-copy"><strong title={video.title}>{video.title}</strong><span className="video-byline">{video.creatorName || (video.sourceType === 'LOCAL' ? '本地上传' : '未知 UP 主')} · {sourceName[video.sourceType]} · {video.publishedAt ? new Date(video.publishedAt).toLocaleDateString('zh-CN') : '发布日期未知'}</span><span className="video-excerpt" title={video.oneSentence || undefined}>{video.oneSentence || '暂无一句话总结'}</span></span></Link></td>
+        <td><Status status={video.overallStatus}/></td><td className="mono"><time dateTime={video.createdAt} title={time(video.createdAt)}>{new Date(video.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</time></td><td><Link className="icon-btn" aria-label={'查看详情：' + video.title} title="查看详情" to={'/videos/' + video.id}>↗</Link></td>
       </tr>)}</tbody></table>
       {query.isPending && <div className="empty">正在读取任务…</div>}
       {query.data?.items.length === 0 && <div className="empty"><b>还没有匹配的任务</b><Link className="btn primary" to="/add">＋ 添加视频</Link></div>}
@@ -138,11 +146,6 @@ function Detail() {
     <Link className="detail-back" to="/">← 返回视频任务</Link>
     <header className="detail-hero"><div className="hero-thumb">▷</div><div><div className="eyebrow">VIDEO / KNOWLEDGE</div><h1>{video.title}</h1><p className="subtitle">{sourceName[video.sourceType]}{video.creatorName ? ' · ' + video.creatorName : ''} · 创建于 {time(video.createdAt)}</p>{video.originalUrl && <a className="detail-source" href={video.originalUrl} target="_blank" rel="noreferrer">打开原视频 ↗</a>}</div><Status status={video.overallStatus}/></header>
     {video.sourceType === 'SIMULATION' && <div className="notice"><strong>模拟处理结果</strong><span>此记录由模拟处理器生成，未调用真实模型。</span></div>}
-    <div className="stage-grid">{stages.map(stage => {
-      const downstream = video.overallStatus !== 'COMPLETED' && video.currentStage && stages.indexOf(stage) > stages.indexOf(video.currentStage);
-      const job = downstream ? undefined : [...video.jobs].reverse().find(item => item.stage === stage);
-      return <div className="panel stage-card" key={stage}><span className="eyebrow">0{stages.indexOf(stage) + 1}</span><h3>{names[stage]}</h3><Status status={job?.status || 'WAITING'}/><p>{job ? '已尝试 ' + job.attempt + ' 次' : '等待上游完成'}</p></div>;
-    })}</div>
     <ErrorNotice error={action.error}/><ErrorNotice error={runs.error}/>
     {video.latestErrorMessage && <p className="error" role="alert">{video.latestErrorMessage} <span className="mono">{video.latestErrorCode}</span></p>}
     <div className="actions">
