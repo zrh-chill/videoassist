@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import type { VideoDto } from '../../../packages/contracts/src/index';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
+import { ConfirmDialog } from './dialog';
 import { sourceName } from './media';
 const time = (value: string) => new Date(value).toLocaleString('zh-CN', { hour12: false });
 const names: Record<string, string> = { DISCOVERED: '已发现，待处理', WAITING: '等待处理', FETCHING: '获取视频中', EXTRACTING_AUDIO: '提取音频中', TRANSCRIBING: '转写中', SUMMARIZING: '总结中', COMPLETED: '已完成', FAILED: '处理失败', CANCELED: '已取消' };
@@ -33,6 +34,7 @@ export function VideoTable({ items, loading = false, empty = '暂无视频记录
 
 function VideoActions({ video }: { video: VideoDto }) {
   const client = useQueryClient();
+  const [deleting, setDeleting] = useState(false);
   const tracking = Boolean(video.creator?.enabled && !video.creator.deletedAt);
   const action = useMutation({
     mutationFn: (kind: 'track' | 'delete') => kind === 'delete'
@@ -44,10 +46,9 @@ function VideoActions({ video }: { video: VideoDto }) {
     },
   });
   return <div className="video-actions">
-    {video.sourceType === 'BILIBILI' && <button className="btn btn-sm" disabled={action.isPending} onClick={() => action.mutate('track')}>{action.isPending && action.variables === 'track' ? '处理中…' : tracking ? '暂停追踪' : '追踪 UP 主'}</button>}
-    <button className="btn btn-sm video-delete" disabled={action.isPending} onClick={() => {
-      if (window.confirm('删除这条视频记录？记录将从列表隐藏，未完成任务将停止，已有媒体和总结会保留。')) action.mutate('delete');
-    }}>{action.isPending && action.variables === 'delete' ? '删除中…' : '删除记录'}</button>
-    {action.isError && <span className="video-action-error" role="alert">{action.error.message}</span>}
+    {video.sourceType === 'BILIBILI' && <button className={'btn track-button ' + (tracking ? 'is-tracking' : 'is-untracked')} disabled={action.isPending} onClick={() => action.mutate('track')}><span className="track-symbol" aria-hidden="true">{tracking ? 'Ⅱ' : '+'}</span><span>{action.isPending && action.variables === 'track' ? '处理中…' : tracking ? '暂停追踪' : '追踪 UP 主'}</span></button>}
+    <button className="video-delete-icon" aria-label={'删除记录：' + video.title} title="删除记录" disabled={action.isPending} onClick={() => setDeleting(true)}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7M14 10v7"/></svg></button>
+    {deleting && <ConfirmDialog title="删除视频记录" confirmLabel="删除记录" onClose={() => setDeleting(false)} onConfirm={() => action.mutateAsync('delete')}>删除「{video.title}」？记录将从列表隐藏，未完成任务将停止，已有媒体和总结会保留。</ConfirmDialog>}
+    {action.isError && !deleting && <span className="video-action-error" role="alert">{action.error.message}</span>}
   </div>;
 }
