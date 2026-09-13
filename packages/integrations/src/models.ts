@@ -59,7 +59,7 @@ export async function transcribeAudio(file: string, startMs: number, durationMs:
   const text = data.data.text.replace(/<\|[^|]*\|>/g, '').trim();
   if (!text) throw new DomainError('S2T_RESPONSE_INVALID', '转写结果为空');
   const segments: Segment[] = data.data.segments?.length ? data.data.segments.map(segment => {
-    if (segment.end < segment.start || segment.end * 1000 > durationMs + 2000) throw new DomainError('S2T_RESPONSE_INVALID', '转写时间段超出音频范围');
+    if (segment.end < segment.start || segment.start * 1000 > durationMs || segment.end * 1000 > durationMs + 2000) throw new DomainError('S2T_RESPONSE_INVALID', '转写时间段超出音频范围');
     return { startMs: startMs + Math.round(segment.start * 1000), endMs: startMs + Math.min(durationMs, Math.round(segment.end * 1000)), text: segment.text.trim() };
   }) : [{ startMs, endMs: startMs + durationMs, text }];
   return { text, language: data.data.language || '未指定', segments, timestampPrecision: data.data.segments?.length ? 'SEGMENT' as const : 'CHUNK' as const };
@@ -74,7 +74,7 @@ const encoder = getEncoding('cl100k_base');
 export const tokenCount = (text: string) => encoder.encode(text).length;
 export function splitText(text: string, budget: number): string[] {
   if (budget < 32) throw new DomainError('LLM_CONTEXT_EXCEEDED', '总结输入预算过小');
-  const pieces = text.match(/[^。！？\n]+[。！？\n]*/gu) || [text];
+  const pieces = text.match(/[^。！？\n]*[。！？\n]+|[^。！？\n]+$/gu) || [text];
   const result: string[] = []; let current = ''; let count = 0;
   for (const piece of pieces) {
     let remaining = piece;
