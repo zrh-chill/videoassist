@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Select } from './select';
+import { ConfirmDialog } from './dialog';
 import { api } from './api';
 import type { SettingsDto, SettingsValues, SettingKey, TestKind, ConnectionResult, PromptDto } from '../../../packages/contracts/src/settings';
 
@@ -73,6 +75,7 @@ function PromptManager() {
   const client = useQueryClient();
   const query = useQuery({ queryKey: ['prompts'], queryFn: () => api<PromptDto[]>('/prompt-versions'), refetchInterval: false });
   const [selected, setSelected] = useState('');
+  const [switchTo, setSwitchTo] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ name: string; body: string } | null>(null);
   const [notice, setNotice] = useState('');
   const active = query.data?.find(p => p.active);
@@ -80,11 +83,11 @@ function PromptManager() {
   const values = draft || prompt;
   const mutation = useMutation({ mutationFn: () => api<{ id: string; revision: number }>('/prompt-versions', { name: values!.name, body: values!.body }),
     onSuccess: result => { setSelected(result.id); setDraft(null); setNotice('已启用提示词版本 ' + result.revision + '，已有总结保持原版本关联。'); void client.invalidateQueries({ queryKey: ['prompts'] }); } });
-  return <section className="panel prompt-panel"><h2>总结提示词</h2>
+  return <section className="panel prompt-panel"><h2>总结提示词</h2> 
+    {switchTo !== null && <ConfirmDialog title="切换提示词版本" confirmLabel="放弃修改并切换" onClose={() => setSwitchTo(null)} onConfirm={async () => { setSelected(switchTo); setDraft(null); }}>切换版本将放弃尚未保存的提示词修改。</ConfirmDialog>}
     {(query.error || mutation.error) && <p className="error" role="alert">{(query.error || mutation.error)?.message}</p>}
     {values && <form onSubmit={event => { event.preventDefault(); mutation.mutate(); }}>
-      <label className="setting-field">历史版本<select aria-label="提示词历史版本" value={prompt?.id || ''} disabled={mutation.isPending} onChange={event => { if (!draft || window.confirm('切换版本将放弃尚未保存的提示词修改，继续？')) { setSelected(event.target.value); setDraft(null); } }}>
-        {query.data?.map(p => <option key={p.id} value={p.id}>版本 {p.revision} · {p.name}{p.active ? ' · 当前启用' : ''}</option>)}</select></label>
+      <div className="setting-field">历史版本<Select label="提示词历史版本" value={prompt?.id || ''} disabled={mutation.isPending} onChange={value => { if (draft) setSwitchTo(value); else setSelected(value); }} options={(query.data || []).map(p => ({ value: p.id, label: '版本 ' + p.revision + ' · ' + p.name + (p.active ? ' · 当前启用' : '') }))}/></div>
       <label className="setting-field">提示词名称<input required maxLength={100} value={values.name} disabled={mutation.isPending} onChange={event => setDraft({ name: event.target.value, body: values.body })}/></label>
       <label className="setting-field">系统提示词正文<textarea required maxLength={30000} rows={14} value={values.body} disabled={mutation.isPending} onChange={event => setDraft({ name: values.name, body: event.target.value })}/></label>
       <div className="actions"><button className="btn primary" disabled={mutation.isPending || (!draft && prompt?.active)}>{mutation.isPending ? '正在保存…' : '保存并启用提示词'}</button><span className="subtitle">{values.body.length.toLocaleString()} / 30,000 字符</span></div>
