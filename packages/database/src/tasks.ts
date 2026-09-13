@@ -1,5 +1,6 @@
 import type { Prisma, Job } from '@prisma/client';
 import type { Database } from './client.js';
+import { persistMedia } from './media.js';
 import type { Stage, StageResult, VideoStatus } from '../../contracts/src/index.js';
 import { DomainError, fingerprint, nextStage, retryDelay, stageStatus } from '../../domain/src/index.js';
 
@@ -53,10 +54,11 @@ export class Tasks {
     });
   }
 
-  async list(query: { q: string; status?: string; cursor?: string; limit: number }) {
+  async list(query: { q: string; status?: string; sourceType?: string; cursor?: string; limit: number }) {
     const where: Prisma.VideoWhereInput = {
       ...(query.q ? { title: { contains: query.q } } : {}),
       ...(query.status ? { overallStatus: query.status } : {}),
+      ...(query.sourceType ? { sourceType: query.sourceType } : {}),
     };
     const [items, total] = await this.db.$transaction([
       this.db.video.findMany({
@@ -73,7 +75,8 @@ export class Tasks {
 
   async detail(id: string) {
     const video = await this.db.video.findUnique({ where: { id }, select: {
-      ...videoSelect, jobs: { orderBy: { createdAt: 'asc' }, select: {
+      ...videoSelect, originalUrl: true, localOriginalName: true, durationMs: true, creatorName: true,
+      jobs: { orderBy: { createdAt: 'asc' }, select: {
         id: true, stage: true, status: true, attempt: true, maxAttempts: true, availableAt: true, cancelRequestedAt: true,
       } },
     } });
@@ -186,7 +189,7 @@ export class Tasks {
       await tx.stageRun.update({ where: { jobId_attempt: { jobId, attempt: job.attempt } }, data: {
         status: error ? 'FAILED' : 'SUCCEEDED', finishedAt: now,
         errorCode: error?.code, errorMessage: error?.message,
-        outputJson: error ? undefined : JSON.stringify(result),
+        outputJson: error ? undefined : JSON.stringify({ simulated: (result as StageResult).simulated, text: (result as StageResult).text }),
       } });
       await tx.job.update({ where: { id: jobId }, data: {
         status: jobStatus, leaseOwner: null, leaseExpiresAt: null,
@@ -196,6 +199,7 @@ export class Tasks {
       if (error) {
         await snapshot(tx, job.videoId, retry ? 'WAITING' : 'FAILED', job.stage, error);
       } else {
+        await persistMedia(tx, job.videoId, result as StageResult);
         const saved = await tx.stageResult.upsert({
           where: { videoId_stage_inputFingerprint: { videoId: job.videoId, stage: job.stage, inputFingerprint: job.inputFingerprint } },
           update: {}, create: { videoId: job.videoId, stage: job.stage, inputFingerprint: job.inputFingerprint, outputJson: JSON.stringify(result) },
