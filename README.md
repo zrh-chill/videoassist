@@ -28,6 +28,8 @@ pnpm dev
 
 启动顺序为 Prisma 客户端生成 → 应用已提交迁移 → Web/API/Worker。模型配置沿用已有 .env，**不要覆盖现有密钥**。ENABLE_SIMULATION 默认为 false，真实处理无需开启模拟模式。
 
+迁移前通过单连接完成 WAL 检查点及日志模式切换，避免 Windows 下已有数据库的锁冲突；API/Worker 初始化后重新启用 WAL。执行迁移前应停止已有服务。
+
 - Web：http://127.0.0.1:5173
 - API：http://127.0.0.1:3001
 - Ctrl+C 结束开发进程组。
