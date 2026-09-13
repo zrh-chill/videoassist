@@ -10,6 +10,7 @@ import './fidelity.css';
 import { MediaResults, ReprocessActions, sourceName } from './media';
 import { SettingsPage } from './settings';
 import { CreatorsPage, MaintenancePage } from './operations';
+import { Select } from './select';
 import { VideoImport } from './video-import';
 import { VideoTable, VideoCover, VideoByline } from './video-table';
 
@@ -88,26 +89,14 @@ function VideoList() {
     <div className="stats">{stats.map(stat => <div className="stat" key={stat.label}><div className="stat-label">{stat.label}</div><div className={'stat-value' + (stat.danger ? ' stat-danger' : '')}>{stat.value === undefined ? '—' : String(stat.value).padStart(2, '0')}</div></div>)}</div>
     <ErrorNotice error={counts.find(item => item.error)?.error ?? null}/>
     <div className="toolbar"><label className="search-label"><span aria-hidden="true">⌕</span><input aria-label="搜索视频标题" placeholder="搜索视频标题…" value={search.get('q') || ''} onChange={event => filter('q', event.target.value)}/></label>
-      <select aria-label="视频来源" value={search.get('sourceType') || ''} onChange={event => filter('sourceType', event.target.value)}><option value="">全部来源</option>{Object.entries(sourceName).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-      <select aria-label="处理状态" value={search.get('status') || ''} onChange={event => filter('status', event.target.value)}><option value="">全部状态</option>{statuses.map(status => <option key={status} value={status}>{names[status]}</option>)}</select>
+      <Select label="视频来源" value={search.get('sourceType') || ''} onChange={value => filter('sourceType', value)} options={[{ value: '', label: '全部来源' }, ...Object.entries(sourceName).map(([value, label]) => ({ value, label }))]}/>
+      <Select label="处理状态" value={search.get('status') || ''} onChange={value => filter('status', value)} options={[{ value: '', label: '全部状态' }, ...statuses.map(value => ({ value, label: names[value] }))]}/>
       <button className="btn small" onClick={() => setSearch({})}>重置</button></div>
     <ErrorNotice error={query.error}/>
     {search.has('creatorId') && <p className="notice">正在显示所选 UP 主已导入的视频。<Link to="/creators">返回 UP 主追踪 →</Link></p>}
     <VideoTable items={query.data?.items || []} loading={query.isPending} empty={<><b>还没有匹配的任务</b><button className="btn primary" onClick={() => document.getElementById('video-url')?.focus()}>＋ 添加视频</button></>}/>
     <div className="pagination"><span>显示 {query.data?.items.length ?? 0} 条，共 {query.data?.total ?? 0} 条</span><div className="top-actions">{search.has('cursor') && <button className="btn small" onClick={() => filter('cursor', '')}>← 返回首页</button>}<button className="btn small" disabled={!query.data?.nextCursor} onClick={() => setSearch(previous => { const next = new URLSearchParams(previous); next.set('cursor', query.data!.nextCursor!); return next; })}>下一页 →</button></div></div>
   </>;
-}
-function CreateForm({ onDone }: { onDone: (id: string) => void }) {
-  const mutation = useMutation({ mutationFn: (body: unknown) => api<{ id: string }>('/videos/simulations', body), onSuccess: data => onDone(data.id) });
-  return <form className="panel create-form" onSubmit={event => {
-    event.preventDefault(); const values = new FormData(event.currentTarget);
-    mutation.mutate({ title: values.get('title'), ...(values.get('failStage') ? { failStage: values.get('failStage') } : {}), retryableFailure: values.get('retryable') === 'on' });
-  }}>
-    <h2>创建模拟任务</h2><label>任务标题<input name="title" required maxLength={200} placeholder="例如：验证单条任务处理流程"/></label>
-    <label>故障模拟<select name="failStage"><option value="">不注入故障</option>{stages.map(stage => <option key={stage} value={stage}>{names[stage]}首次失败</option>)}</select></label>
-    <label className="checkbox"><input type="checkbox" name="retryable"/>自动退避重试（首次等待 1 分钟）</label>
-    <ErrorNotice error={mutation.error}/><button className="btn primary" disabled={mutation.isPending}>{mutation.isPending ? '正在创建…' : '创建任务'}</button>
-  </form>;
 }
 function Detail() {
   const { id } = useParams<{ id: string }>();
