@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { VideoDto } from '../../../packages/contracts/src/index';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from './api';
 import { sourceName } from './media';
 const time = (value: string) => new Date(value).toLocaleString('zh-CN', { hour12: false });
 const names: Record<string, string> = { DISCOVERED: '已发现，待处理', WAITING: '等待处理', FETCHING: '获取视频中', EXTRACTING_AUDIO: '提取音频中', TRANSCRIBING: '转写中', SUMMARIZING: '总结中', COMPLETED: '已完成', FAILED: '处理失败', CANCELED: '已取消' };
@@ -22,9 +24,30 @@ export function VideoTable({ items, loading = false, empty = '暂无视频记录
   return <div className="table-wrap video-table"><table><thead><tr><th>视频</th><th>当前状态</th><th>创建时间</th><th><span className="sr-only">操作</span></th></tr></thead>
       <tbody>{items.map(video => <tr key={video.id}>
         <td><Link className="video-link" to={'/videos/' + video.id}><VideoCover video={video}/><span className="video-copy"><strong title={video.title}>{video.title}</strong><VideoByline video={video}/><span className="video-excerpt" title={video.oneSentence || undefined}>{video.oneSentence || '暂无一句话总结'}</span></span></Link></td>
-        <td><Status status={video.overallStatus}/></td><td className="mono"><time dateTime={video.createdAt} title={time(video.createdAt)}>{new Date(video.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</time></td><td><Link className="icon-btn" aria-label={'查看详情：' + video.title} title="查看详情" to={'/videos/' + video.id}>↗</Link></td>
+        <td><Status status={video.overallStatus}/></td><td className="mono"><time dateTime={video.createdAt} title={time(video.createdAt)}>{new Date(video.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</time></td><td><VideoActions video={video}/></td>
       </tr>)}</tbody></table>
       {loading && <div className="empty">正在读取任务…</div>}
       {!loading && !items.length && <div className="empty">{empty}</div>}
     </div>;
+}
+
+function VideoActions({ video }: { video: VideoDto }) {
+  const client = useQueryClient();
+  const tracking = Boolean(video.creator?.enabled && !video.creator.deletedAt);
+  const action = useMutation({
+    mutationFn: (kind: 'track' | 'delete') => kind === 'delete'
+      ? api('/videos/' + video.id, {}, 'DELETE')
+      : tracking ? api('/creators/' + video.creator!.id, { enabled: false }, 'PATCH')
+      : api('/videos/' + video.id + '/actions/track-creator', {}),
+    onSuccess: async () => {
+      await client.invalidateQueries();
+    },
+  });
+  return <div className="video-actions">
+    {video.sourceType === 'BILIBILI' && <button className="btn btn-sm" disabled={action.isPending} onClick={() => action.mutate('track')}>{action.isPending && action.variables === 'track' ? '处理中…' : tracking ? '暂停追踪' : '追踪 UP 主'}</button>}
+    <button className="btn btn-sm video-delete" disabled={action.isPending} onClick={() => {
+      if (window.confirm('删除这条视频记录？记录将从列表隐藏，未完成任务将停止，已有媒体和总结会保留。')) action.mutate('delete');
+    }}>{action.isPending && action.variables === 'delete' ? '删除中…' : '删除记录'}</button>
+    {action.isError && <span className="video-action-error" role="alert">{action.error.message}</span>}
+  </div>;
 }
