@@ -10,7 +10,7 @@
   "scripts": {
     "db:generate": "prisma generate --schema packages/database/prisma/schema.prisma",
     "db:migrate": "tsx scripts/migrate.ts",
-    "dev": "pnpm db:migrate && concurrently -k -n api,worker,web \"pnpm dev:api\" \"pnpm dev:worker\" \"pnpm dev:web\"",
+    "dev": "pnpm db:generate && pnpm db:migrate && concurrently -k -n api,worker,web \"pnpm dev:api\" \"pnpm dev:worker\" \"pnpm dev:web\"",
     "dev:api": "tsx watch apps/api/src/main.ts",
     "dev:worker": "tsx watch apps/worker/src/main.ts",
     "dev:web": "pnpm --filter @videoassist/web dev",
