@@ -20,7 +20,7 @@ export interface SummaryOutput {
 }
 export interface MediaOutput {
   artifact?: MediaArtifact;
-  metadata?: { title: string; durationMs: number; creatorName?: string; publishedAt?: string; coverUrl?: string };
+  metadata?: { title: string; durationMs: number; creatorName?: string; creatorUid?: string; publishedAt?: string; coverUrl?: string };
   transcript?: TranscriptOutput;
   summary?: SummaryOutput;
 }
