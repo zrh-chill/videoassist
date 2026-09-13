@@ -1,4 +1,5 @@
 import type { Database } from './client.js';
+import type { Prisma } from '@prisma/client';
 import { DomainError, fingerprint } from '../../domain/src/index.js';
 import { normalizeCreator, type CreatorVideos } from '../../integrations/src/creators.js';
 import { importMedia } from './media.js';
@@ -14,7 +15,7 @@ export class Operations {
       return { id: creator.id };
     });
   }
-  private async command<T>(key: string, input: unknown, execute: (tx: Parameters<Parameters<Database['$transaction']>[0]>[0]) => Promise<T>): Promise<T> {
+  private async command<T>(key: string, input: unknown, execute: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
     return this.db.$transaction(async tx => {
       await tx.command.deleteMany({ where: { expiresAt: { lt: new Date() } } });
       const hash = fingerprint(input); const prior = await tx.command.findUnique({ where: { key } });
@@ -31,7 +32,7 @@ export class Operations {
     return this.db.$transaction(async tx => {
       await tx.creator.updateMany({ where: { id, deletedAt: null }, data: { ...patch, ...(remove ? { deletedAt: new Date(), enabled: false } : {}) } });
       const creator = await tx.creator.findUnique({ where: { id } });
-      if (!creator) throw new DomainError('CREATOR_NOT_FOUND', '追踪对象不存在', false, 404);
+      if (!creator || (creator.deletedAt && !remove)) throw new DomainError('CREATOR_NOT_FOUND', '追踪对象不存在', false, 404);
       if (!creator.enabled || remove) {
         await tx.operation.updateMany({ where: { creatorId: id, status: 'RUNNING' }, data: { cancelRequestedAt: new Date() } });
         await tx.operation.updateMany({ where: { creatorId: id, status: 'QUEUED' }, data: { status: 'CANCELED', activeKey: null, finishedAt: new Date() } });
