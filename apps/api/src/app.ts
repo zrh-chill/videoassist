@@ -11,6 +11,9 @@ import { DomainError, publicError } from '../../../packages/domain/src/index.js'
 import { createSimulationSchema, listQuerySchema } from '../../../packages/contracts/src/index.js';
 import { projectRoot, type loadConfig } from '../../../packages/config/src/index.js';
 import { mediaRoutes } from './media-routes.js';
+import { settingsRoutes } from './settings-routes.js';
+import { exportRoutes } from './export-routes.js';
+import { Settings } from '../../../packages/database/src/settings.js';
 
 export function createApp(db: Database, config: ReturnType<typeof loadConfig>) {
   const app = Fastify({ bodyLimit: 16 * 1024, logger: false });
@@ -18,6 +21,8 @@ export function createApp(db: Database, config: ReturnType<typeof loadConfig>) {
   const prefix = '/api/v1';
   const streams = new Set<() => void>();
   mediaRoutes(app, db, config);
+  settingsRoutes(app, db, config);
+  exportRoutes(app, db);
   app.addHook('onRequest', async request => {
     const host = new URL('http://' + request.headers.host).hostname;
     const local = ['127.0.0.1', 'localhost', '[::1]'];
@@ -55,7 +60,7 @@ export function createApp(db: Database, config: ReturnType<typeof loadConfig>) {
       return { status: 'ready' };
     } catch { return reply.code(503).send({ status: 'unavailable' }); }
   });
-  app.get(prefix + '/capabilities', async () => ({ simulation: config.simulation, phase: 3, media: true, uploadMaxBytes: config.uploadMaxBytes }));
+  app.get(prefix + '/capabilities', async () => ({ simulation: config.simulation, phase: 4, media: true, uploadMaxBytes: (await new Settings(db, config).effective()).uploadMaxBytes }));
   app.get(prefix + '/videos', async request => tasks.list(listQuerySchema.parse(request.query)));
   app.post(prefix + '/videos/simulations', async (request, reply) => {
     if (!config.simulation) throw new DomainError('SIMULATION_DISABLED', '未启用模拟模式', false, 403);
