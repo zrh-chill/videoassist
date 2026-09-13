@@ -78,21 +78,39 @@ export class Tasks {
   }
 
   async detail(id: string) {
-    const video = await this.db.video.findUnique({ where: { id }, select: {
+    const video = await this.db.video.findFirst({ where: { id, isDeleted: false }, select: {
       ...videoSelect, originalUrl: true, localOriginalName: true, durationMs: true, creatorName: true,
       jobs: { orderBy: { createdAt: 'asc' }, select: {
         id: true, stage: true, status: true, attempt: true, maxAttempts: true, availableAt: true, cancelRequestedAt: true,
       } },
     } });
-    if (!video) throw missing();
+    if (!video || ('isDeleted' in video && video.isDeleted)) throw missing();
     return video;
+  }
+
+  async softDelete(id: string) {
+    return this.db.$transaction(async tx => {
+      await tx.command.deleteMany({ where: { expiresAt: { lt: new Date() } } });
+      const video = await tx.video.findUnique({ where: { id } });
+      if (!video) throw missing();
+      if (video.isDeleted) return { id };
+      const now = new Date();
+      const jobs = await tx.job.findMany({ where: { videoId: id, status: { in: ['QUEUED', 'RUNNING'] } } });
+      for (const job of jobs) {
+        await cancelJob(tx, job, now);
+        if (job.leaseOwner) await release(tx, job.leaseOwner);
+      }
+      await tx.video.update({ where: { id }, data: { isDeleted: true, deletedAt: now } });
+      await event(tx, id, 'DELETED', null);
+      return { id };
+    });
   }
 
   async cancel(id: string) {
     return this.db.$transaction(async tx => {
       await tx.job.updateMany({ where: { videoId: id, status: { in: ['QUEUED', 'RUNNING'] } }, data: { cancelRequestedAt: new Date() } });
       const video = await tx.video.findUnique({ where: { id } });
-      if (!video) throw missing();
+      if (!video || ('isDeleted' in video && video.isDeleted)) throw missing();
       const jobs = await tx.job.findMany({ where: { videoId: id, status: 'QUEUED' } });
       for (const job of jobs) await cancelJob(tx, job, new Date());
       // Running operations acknowledge cancellation before their outputs can commit.
@@ -111,7 +129,7 @@ export class Tasks {
         return JSON.parse(prior.responseJson) as { id: string };
       }
       const video = await tx.video.findUnique({ where: { id } });
-      if (!video) throw missing();
+      if (!video || ('isDeleted' in video && video.isDeleted)) throw missing();
       if (!['FAILED', 'CANCELED'].includes(video.overallStatus)) throw new DomainError('INVALID_TRANSITION', '仅失败或取消的任务可以重试', false, 409);
       const job = await tx.job.findFirst({ where: { videoId: id, status: { in: ['FAILED', 'CANCELED'] } }, orderBy: { createdAt: 'desc' } });
       if (!job) throw new DomainError('INVALID_TRANSITION', '没有可重试阶段', false, 409);
@@ -136,7 +154,7 @@ export class Tasks {
       });
       if (!lock.count) return null;
       const job = await tx.job.findFirst({
-        where: { OR: [{ status: 'QUEUED', availableAt: { lte: now } }, { status: 'RUNNING', leaseExpiresAt: { lte: now } }] },
+        where: { video: { isDeleted: false }, OR: [{ status: 'QUEUED', availableAt: { lte: now } }, { status: 'RUNNING', leaseExpiresAt: { lte: now } }] },
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       });
       if (!job) { await release(tx, owner); return null; }
@@ -227,5 +245,6 @@ export class Tasks {
 const videoSelect = {
   id: true, title: true, sourceType: true, overallStatus: true, currentStage: true,
   latestErrorCode: true, latestErrorMessage: true, createdAt: true, updatedAt: true,
+  creatorUid: true, creatorId: true, creator: { select: { id: true, enabled: true, deletedAt: true } },
   coverUrl: true, durationMs: true, creatorName: true, publishedAt: true,
 } as const;
