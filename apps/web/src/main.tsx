@@ -8,9 +8,11 @@ import { api, useEvents } from './api';
 import './styles.css';
 import { AddVideoForm, MediaResults, ReprocessActions, sourceName } from './media';
 import { SettingsPage } from './settings';
+import { CreatorsPage, MaintenancePage } from './operations';
 
 const client = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchInterval: 10_000, refetchIntervalInBackground: true } } });
 const names: Record<string, string> = {
+  DISCOVERED: '已发现，待处理',
   WAITING: '等待处理', FETCHING: '获取视频中', EXTRACTING_AUDIO: '提取音频中', TRANSCRIBING: '转写中',
   SUMMARIZING: '总结中', COMPLETED: '已完成', FAILED: '处理失败', CANCELED: '已取消',
   FETCH: '获取视频', EXTRACT_AUDIO: '提取音频', TRANSCRIBE: '全文转写', SUMMARIZE: 'AI 总结',
@@ -35,7 +37,7 @@ function PageRoutes() {
   }, [location, leaving]);
   // Keep the outgoing route mounted during its fade; filters and SSE never restart it.
   return <div key={shownLocation.pathname} className={'page-transition ' + (leaving ? 'page-leaving' : 'page-entering')} inert={leaving}>
-    <Routes location={leaving ? shownLocation : location}><Route path="/" element={<VideoList/>}/><Route path="/videos/:id" element={<Detail/>}/><Route path="/settings" element={<SettingsPage/>}/><Route path="*" element={<p>页面不存在，<Link to="/">返回任务列表</Link></p>}/></Routes>
+    <Routes location={leaving ? shownLocation : location}><Route path="/" element={<VideoList/>}/><Route path="/videos/:id" element={<Detail/>}/><Route path="/settings" element={<SettingsPage/>}/><Route path="/creators" element={<CreatorsPage/>}/><Route path="/maintenance" element={<MaintenancePage/>}/><Route path="*" element={<p>页面不存在，<Link to="/">返回任务列表</Link></p>}/></Routes>
   </div>;
 }
 function Layout() {
@@ -45,8 +47,10 @@ function Layout() {
     <aside className="sidebar">
       <Link to="/" className="brand"><span className="brand-mark">帧</span><span><strong>帧语</strong><small>FRAMENOTE / WORKSPACE</small></span></Link>
       <span className="nav-label">工作空间</span>
-      <Link to="/" className={'nav-item' + (location.pathname !== '/settings' ? ' active' : '')}><span>▤</span> 视频任务</Link>
+      <Link to="/" className={'nav-item' + (location.pathname === '/' || location.pathname.startsWith('/videos/') ? ' active' : '')}><span>▤</span> 视频任务</Link>
+      <Link to="/creators" className={'nav-item' + (location.pathname === '/creators' ? ' active' : '')}><span>◎</span> UP 主追踪</Link>
       <Link to="/settings" className={'nav-item' + (location.pathname === '/settings' ? ' active' : '')}><span>⚙</span> 系统设置</Link>
+      <Link to="/maintenance" className={'nav-item' + (location.pathname === '/maintenance' ? ' active' : '')}><span>▣</span> 备份与维护</Link>
       <div className="sidebar-foot"><span className={'dot ' + (connected ? 'live' : '')}/>{connected ? '实时更新已连接' : '每 10 秒同步状态'}<p>视频转写与内容整理</p></div>
     </aside>
     <main className="main"><PageRoutes/></main>
@@ -109,7 +113,7 @@ function Detail() {
   const video = detail.data;
   if (!video) return <><Link to="/">← 返回视频任务</Link><ErrorNotice error={detail.error}/>{detail.isPending && <p>正在加载详情…</p>}</>;
   const cancelRequested = video.jobs.some(job => job.status === 'RUNNING' && job.cancelRequestedAt);
-  const terminal = ['COMPLETED', 'FAILED', 'CANCELED'].includes(video.overallStatus);
+  const terminal = ['DISCOVERED', 'COMPLETED', 'FAILED', 'CANCELED'].includes(video.overallStatus);
   return <>
     <Link className="detail-back" to="/">← 返回视频任务</Link>
     <header className="detail-hero"><div className="hero-thumb">▷</div><div><div className="eyebrow">VIDEO / KNOWLEDGE</div><h1>{video.title}</h1><p className="subtitle">{sourceName[video.sourceType]}{video.creatorName ? ' · ' + video.creatorName : ''} · 创建于 {time(video.createdAt)}</p>{video.originalUrl && <a className="detail-source" href={video.originalUrl} target="_blank" rel="noreferrer">打开原视频 ↗</a>}</div><Status status={video.overallStatus}/></header>
@@ -122,12 +126,13 @@ function Detail() {
     <ErrorNotice error={action.error}/><ErrorNotice error={runs.error}/>
     {video.latestErrorMessage && <p className="error" role="alert">{video.latestErrorMessage} <span className="mono">{video.latestErrorCode}</span></p>}
     <div className="actions">
+      {video.overallStatus === 'DISCOVERED' && <button className="btn primary" disabled={action.isPending} onClick={() => action.mutate('start')}>开始处理视频</button>}
       {!terminal && <button className="btn danger" disabled={action.isPending || cancelRequested} onClick={() => action.mutate('cancel')}>{cancelRequested ? '正在取消…' : '取消任务'}</button>}
       {['FAILED', 'CANCELED'].includes(video.overallStatus) && <button className="btn primary" disabled={action.isPending} onClick={() => setConfirming(!confirming)}>从当前阶段重试</button>}
     </div>
     {confirming && <div className="panel"><p>将重新执行「{names[video.currentStage || '']}」阶段，之前成功阶段的结果会被保留并复用。</p><button className="btn primary" disabled={action.isPending} onClick={() => action.mutate('retry')}>确认重试</button></div>}
     {video.sourceType !== 'SIMULATION' && <MediaResults id={video.id} active={!terminal}/>}
-    {video.sourceType !== 'SIMULATION' && <ReprocessActions id={video.id} sourceType={video.sourceType} active={!terminal}/>}
+    {video.sourceType !== 'SIMULATION' && video.overallStatus !== 'DISCOVERED' && <ReprocessActions id={video.id} sourceType={video.sourceType} active={!terminal}/>}
     <section className="panel"><h2>执行记录 <span className="count">{runs.data?.length ?? 0}</span></h2>
       {!runs.data?.length && <p className="subtitle">{video.overallStatus === 'CANCELED' ? '任务已取消，尚未执行任何阶段。' : '任务已持久化，等待 Worker 领取。'}</p>}
       {runs.data?.map(run => <article className="run" key={run.id}><div><strong>{names[run.stage]} · 第 {run.attempt} 次</strong><Status status={run.status}/></div><p className="mono">{time(run.startedAt)}{run.finishedAt ? ' · 耗时 ' + Math.max(0, (Date.parse(run.finishedAt) - Date.parse(run.startedAt)) / 1000).toFixed(1) + ' 秒' : ' · 正在执行'}</p>
