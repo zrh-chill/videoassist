@@ -57,7 +57,7 @@ function Layout() {
         <Link to="/settings" aria-current={location.pathname === '/settings' ? 'page' : undefined} className={'nav-item' + (location.pathname === '/settings' ? ' active' : '')}><span className="nav-icon">⚙</span>系统设置</Link>
         <Link to="/maintenance" aria-current={location.pathname === '/maintenance' ? 'page' : undefined} className={'nav-item' + (location.pathname === '/maintenance' ? ' active' : '')}><span className="nav-icon">▣</span>备份与维护</Link>
       </nav>
-      <div className="sidebar-foot"><span className={'dot ' + (connected ? 'live' : '')}/>{connected ? '实时更新已连接' : '每 10 秒同步状态'}<p>视频转写与内容整理</p></div>
+      <div className="sidebar-foot"><span className={'dot ' + (connected ? 'live' : '')}/>{connected ? '实时更新已连接' : '每 10 秒同步状态'}</div>
     </aside>
     <main className="main"><PageRoutes/></main>
   </div>;
@@ -65,7 +65,7 @@ function Layout() {
 function AddVideoPage() {
   const navigate = useNavigate();
   const capability = useQuery({ queryKey: ['capabilities'], queryFn: () => api<{ uploadMaxBytes: number }>('/capabilities'), refetchInterval: false });
-  return <><header className="topbar"><div><h1>添加视频</h1><p className="subtitle">上传本地文件，或粘贴 B 站视频链接。</p></div></header>
+  return <><header className="topbar"><div><h1>添加视频</h1></div></header>
     <ErrorNotice error={capability.error}/>
     <AddVideoForm maxBytes={capability.data?.uploadMaxBytes || 4 * 1024 ** 3} onDone={id => navigate('/videos/' + id)}/></>;
 }
@@ -89,9 +89,9 @@ function VideoList() {
     setSearch(previous => { const next = new URLSearchParams(previous); next.delete('cursor'); value ? next.set(key, value) : next.delete(key); return next; });
   };
   return <>
-    <header className="topbar"><div><h1>视频任务</h1><p className="subtitle">把冗长视频，变成可检索、可复用的知识。</p></div>
+    <header className="topbar"><div><h1>视频任务</h1></div>
       <div className="top-actions"><div className="export-control"><a className="btn" href={'/api/v1/exports/videos.xlsx?' + exportQuery.toString()} download>⇩ 导出 Excel</a><details className="export-options"><summary aria-label="导出选项">⌄</summary><div className="export-popover"><strong>导出当前筛选结果</strong><label className="checkbox"><input type="checkbox" checked={exportHistory} onChange={event => setExportHistory(event.target.checked)}/>包含处理记录</label><p>超长单元格会标记截断，全文可在详情查看。</p></div></details></div><Link className="btn primary" to="/add">＋ 添加视频</Link></div></header>
-    <div className="stats">{stats.map(stat => <div className="stat" key={stat.label}><div className="stat-label">{stat.label}</div><div className={'stat-value' + (stat.danger ? ' stat-danger' : '')}>{stat.value === undefined ? '—' : String(stat.value).padStart(2, '0')}</div><div className="stat-meta">{stat.meta}</div></div>)}</div>
+    <div className="stats">{stats.map(stat => <div className="stat" key={stat.label}><div className="stat-label">{stat.label}</div><div className={'stat-value' + (stat.danger ? ' stat-danger' : '')}>{stat.value === undefined ? '—' : String(stat.value).padStart(2, '0')}</div></div>)}</div>
     <ErrorNotice error={counts.find(item => item.error)?.error ?? null}/>
     <div className="toolbar"><label className="search-label"><span aria-hidden="true">⌕</span><input aria-label="搜索视频标题" placeholder="搜索视频标题…" value={search.get('q') || ''} onChange={event => filter('q', event.target.value)}/></label>
       <select aria-label="视频来源" value={search.get('sourceType') || ''} onChange={event => filter('sourceType', event.target.value)}><option value="">全部来源</option>{Object.entries(sourceName).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
@@ -105,7 +105,7 @@ function VideoList() {
         <td><span className="source"><i className={'source-dot ' + (video.sourceType === 'BILIBILI' ? '' : 'local')}/>{sourceName[video.sourceType]}</span></td><td><Status status={video.overallStatus}/></td><td className="mono"><time dateTime={video.createdAt} title={time(video.createdAt)}>{new Date(video.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</time></td><td><Link className="icon-btn" aria-label={'查看详情：' + video.title} title="查看详情" to={'/videos/' + video.id}>↗</Link></td>
       </tr>)}</tbody></table>
       {query.isPending && <div className="empty">正在读取任务…</div>}
-      {query.data?.items.length === 0 && <div className="empty"><b>还没有匹配的任务</b><p>添加一个视频，开始整理内容。</p><Link className="btn primary" to="/add">＋ 添加视频</Link></div>}
+      {query.data?.items.length === 0 && <div className="empty"><b>还没有匹配的任务</b><Link className="btn primary" to="/add">＋ 添加视频</Link></div>}
     </div>
     <div className="pagination"><span>显示 {query.data?.items.length ?? 0} 条，共 {query.data?.total ?? 0} 条</span><div className="top-actions">{search.has('cursor') && <button className="btn small" onClick={() => filter('cursor', '')}>← 返回首页</button>}<button className="btn small" disabled={!query.data?.nextCursor} onClick={() => setSearch(previous => { const next = new URLSearchParams(previous); next.set('cursor', query.data!.nextCursor!); return next; })}>下一页 →</button></div></div>
   </>;
