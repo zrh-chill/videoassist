@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Database } from '../../../packages/database/src/client.js';
 import type { AppConfig } from '../../../packages/config/src/index.js';
 import { MediaLibrary } from '../../../packages/database/src/media.js';
+import { Settings } from '../../../packages/database/src/settings.js';
 import { Tasks } from '../../../packages/database/src/tasks.js';
 import { receiveUpload, moveIntoStorage } from '../../../packages/storage/src/media.js';
 import { resolveStorageKey } from '../../../packages/storage/src/index.js';
@@ -14,8 +15,9 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { unlink } from 'node:fs/promises';
 
-export function mediaRoutes(app: FastifyInstance, db: Database, config: AppConfig) {
-  app.register(multipart, { limits: { fileSize: config.uploadMaxBytes, files: 1, fields: 0, parts: 1 } });
+export function mediaRoutes(app: FastifyInstance, db: Database, base: AppConfig) {
+  const settings = new Settings(db, base);
+  app.register(multipart, { limits: { fileSize: 4 * 1024 ** 3, files: 1, fields: 0, parts: 1 } });
   const media = new MediaLibrary(db);
   const tasks = new Tasks(db);
   const prefix = '/api/v1/videos';
@@ -29,6 +31,7 @@ export function mediaRoutes(app: FastifyInstance, db: Database, config: AppConfi
     return reply.code(result.duplicate ? 200 : 201).send(result);
   });
   app.post(prefix + '/uploads', async (request, reply) => {
+    const config = await settings.effective();
     const key = requestKey(request.headers['idempotency-key']);
     const part = await request.file();
     if (!part) throw new DomainError('INVALID_VIDEO_FILE', '请选择一个视频文件');
