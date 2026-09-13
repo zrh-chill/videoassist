@@ -10,12 +10,14 @@ import { Tasks } from '../../../packages/database/src/tasks.js';
 import { DomainError, publicError } from '../../../packages/domain/src/index.js';
 import { createSimulationSchema, listQuerySchema } from '../../../packages/contracts/src/index.js';
 import { projectRoot, type loadConfig } from '../../../packages/config/src/index.js';
+import { mediaRoutes } from './media-routes.js';
 
 export function createApp(db: Database, config: ReturnType<typeof loadConfig>) {
   const app = Fastify({ bodyLimit: 16 * 1024, logger: false });
   const tasks = new Tasks(db);
   const prefix = '/api/v1';
   const streams = new Set<() => void>();
+  mediaRoutes(app, db, config);
   app.addHook('onRequest', async request => {
     const host = new URL('http://' + request.headers.host).hostname;
     const local = ['127.0.0.1', 'localhost', '[::1]'];
@@ -34,6 +36,8 @@ export function createApp(db: Database, config: ReturnType<typeof loadConfig>) {
   app.setErrorHandler((error, request, reply) => {
     const safe = error instanceof z.ZodError
       ? new DomainError('INVALID_INPUT', '请求参数格式不正确')
+      : (error as { statusCode?: number }).statusCode === 413
+        ? new DomainError('UPLOAD_TOO_LARGE', '上传文件超过容量限制', false, 413)
       : (error as { statusCode?: number }).statusCode === 400
         ? new DomainError('INVALID_INPUT', '请求内容格式不正确') : publicError(error);
     reply.code(safe.httpStatus).send({ error: { code: safe.code, message: safe.message, requestId: request.id } });
@@ -51,7 +55,7 @@ export function createApp(db: Database, config: ReturnType<typeof loadConfig>) {
       return { status: 'ready' };
     } catch { return reply.code(503).send({ status: 'unavailable' }); }
   });
-  app.get(prefix + '/capabilities', async () => ({ simulation: config.simulation, phase: 1 }));
+  app.get(prefix + '/capabilities', async () => ({ simulation: config.simulation, phase: 2, media: true, uploadMaxBytes: config.uploadMaxBytes }));
   app.get(prefix + '/videos', async request => tasks.list(listQuerySchema.parse(request.query)));
   app.post(prefix + '/videos/simulations', async (request, reply) => {
     if (!config.simulation) throw new DomainError('SIMULATION_DISABLED', '未启用模拟模式', false, 403);
