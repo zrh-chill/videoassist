@@ -161,3 +161,69 @@ test('长文稿按令牌切片保持原文，Map-Reduce 生成有效结构', asy
     { ...config, summaryInputTokens: 4096 }, new AbortController().signal);
   assert.ok(result.chunkCount > 1); assert.ok(summarySchema.safeParse(result.content).success); assert.ok(llmCalls > 2);
 });
+
+test('强制转写绕过旧检查点，幂等重放不重复入队，失败取消保留历史', async () => {
+  const id = (await upload(await sampleVideo())).json().id;
+  const tasks = new Tasks(db); const library = new MediaLibrary(db);
+  const worker = new Worker(tasks, mediaHandler(db, config));
+  for (let i = 0; i < 3; i++) await worker.tick();
+  const input = { stage: 'TRANSCRIBE' as const, force: true as const, reason: '验收强制转写' };
+  const key = randomUUID();
+  await library.reprocess(id, input, key);
+  await library.reprocess(id, input, key);
+  assert.equal(await db.job.count({ where: { status: 'QUEUED' } }), 1);
+  await assert.rejects(library.reprocess(id, { ...input, reason: '不同请求' }, key), { code: 'IDEMPOTENCY_CONFLICT' });
+  await assert.rejects(library.reprocess(id, input, randomUUID()), { code: 'TASK_ACTIVE' });
+  assert.equal(await db.transcript.count({ where: { isCurrent: true } }), 0);
+  assert.equal(await db.summary.count({ where: { isCurrent: true } }), 0);
+  assert.equal(await db.artifact.count({ where: { isCurrent: true } }), 2);
+  httpStatus = 401; await worker.tick();
+  assert.equal((await tasks.detail(id)).overallStatus, 'FAILED');
+  const app = createApp(db, config);
+  try {
+    assert.equal((await app.inject({ url: '/api/v1/videos/' + id + '/transcript' })).json().current, null);
+    assert.ok((await app.inject({ url: '/api/v1/videos/' + id + '/transcript?revision=1' })).json().current.fullText);
+    assert.ok((await app.inject({ url: '/api/v1/videos/' + id + '/summary?revision=1' })).json().current.renderedText);
+    const invalid = await app.inject({ method: 'POST', url: '/api/v1/videos/' + id + '/actions/reprocess', headers: { 'idempotency-key': randomUUID() }, payload: { stage: 'TRANSCRIBE', force: false, reason: 'test' } });
+    assert.equal(invalid.statusCode, 400);
+  } finally { await app.close(); }
+  httpStatus = 200; await tasks.retry(id, randomUUID());
+  await worker.tick(); await worker.tick();
+  assert.equal(speechCalls, 2); assert.equal(llmCalls, 2);
+  assert.equal(await db.transcript.count(), 2); assert.equal(await db.summary.count(), 2);
+  await library.reprocess(id, input, randomUUID()); await tasks.cancel(id);
+  assert.equal(await db.transcript.count(), 2); assert.equal(await db.summary.count(), 2);
+  assert.equal(await db.transcript.count({ where: { isCurrent: true } }), 0);
+  const audit = await db.event.findMany({ where: { videoId: id } });
+  assert.ok(audit.some(event => event.payload.includes(input.reason) && event.payload.includes('"force":true')));
+});
+
+test('重新提取保留原音频并生成新版本；重新下载失效所有下游产物', async () => {
+  const id = (await upload(await sampleVideo())).json().id;
+  const tasks = new Tasks(db); const library = new MediaLibrary(db);
+  const worker = new Worker(tasks, mediaHandler(db, config));
+  for (let i = 0; i < 3; i++) await worker.tick();
+  const oldAudio = (await db.artifact.findFirst({ where: { kind: 'AUDIO' } }))!;
+  await assert.rejects(library.reprocess(id, { stage: 'FETCH', force: true, reason: '本地下载不支持' }, randomUUID()), { code: 'INVALID_TRANSITION' });
+  await library.reprocess(id, { stage: 'EXTRACT_AUDIO', force: true, reason: '重新提取验收' }, randomUUID());
+  assert.equal(await db.artifact.count({ where: { kind: 'AUDIO', isCurrent: true } }), 0);
+  for (let i = 0; i < 3; i++) await worker.tick();
+  assert.equal(speechCalls, 2);
+  assert.equal(await db.artifact.count({ where: { kind: 'AUDIO' } }), 2);
+  assert.equal((await db.artifact.findUniqueOrThrow({ where: { id: oldAudio.id } })).isCurrent, false);
+  assert.ok((await readFile(resolveStorageKey(config.dataDir, oldAudio.storageKey))).length);
+  // Reuse fixture media to verify FETCH's full invalidation and downstream enqueue without external calls.
+  await db.video.update({ where: { id }, data: { sourceType: 'BILIBILI', bvid: 'BV17xo9BsEnx', originalUrl: 'https://www.bilibili.com/video/BV17xo9BsEnx/' } });
+  await library.reprocess(id, { stage: 'FETCH', force: true, reason: '重新下载验收' }, randomUUID());
+  assert.equal(await db.artifact.count({ where: { isCurrent: true } }), 0);
+  assert.equal(await db.transcript.count({ where: { isCurrent: true } }), 0);
+  assert.equal(await db.summary.count({ where: { isCurrent: true } }), 0);
+  const claimed = (await tasks.claim('download-test'))!;
+  assert.equal(claimed.stage, 'FETCH'); assert.equal(await tasks.cached(claimed), null);
+  const source = (await db.artifact.findFirst({ where: { kind: 'SOURCE_VIDEO' } }))!;
+  await tasks.finish(claimed.id, 'download-test', { simulated: false, text: '测试下载完成', artifact: { kind: 'SOURCE_VIDEO', storageKey: source.storageKey, sizeBytes: Number(source.sizeBytes), sha256: source.sha256, mimeType: source.mimeType } });
+  for (let i = 0; i < 3; i++) await worker.tick();
+  assert.equal((await tasks.detail(id)).overallStatus, 'COMPLETED');
+  assert.equal(await db.artifact.count({ where: { isCurrent: true } }), 2);
+  assert.equal(await db.transcript.count(), 3); assert.equal(await db.summary.count(), 3);
+});
