@@ -32,7 +32,7 @@ export function AddVideoForm({ onDone, maxBytes }: { onDone: (id: string) => voi
     <div className="media-tabs"><button className={'btn ' + (mode === 'bilibili' ? 'primary' : '')} disabled={mutation.isPending} onClick={() => { setMode('bilibili'); mutation.reset(); }}>B 站链接</button>
       <button className={'btn ' + (mode === 'local' ? 'primary' : '')} disabled={mutation.isPending} onClick={() => { setMode('local'); mutation.reset(); }}>本地上传</button></div>
     <form className="media-import" onSubmit={event => { event.preventDefault(); setProgress(0); mutation.mutate(event.currentTarget); }}>
-      {mode === 'bilibili' ? <label>B 站视频链接<input name="url" type="url" required placeholder="https://www.bilibili.com/video/BV…/" disabled={mutation.isPending}/><small>自动解析视频信息；相同 BVID 会打开已有任务。</small></label>
+      {mode === 'bilibili' ? <label>B 站视频链接<input name="url" type="url" required placeholder="https://www.bilibili.com/video/BV…/" disabled={mutation.isPending}/><small>支持 BV 链接与 b23.tv 短链接，仅处理第一分 P；相同 BVID 会打开已有任务。</small></label>
         : <label>选择本地视频<input name="file" type="file" accept=".mp4,.mov,.mkv,.webm,.avi,.m4v" required disabled={mutation.isPending}/><small>支持常见视频格式，单文件最多 {(maxBytes / 1024 ** 3).toFixed(1)} GiB。</small></label>}
       {mutation.error && <p className="error" role="alert">{mutation.error.message}</p>}
       <button className="btn primary" disabled={mutation.isPending}>{mutation.isPending ? (mode === 'local' ? (progress < 100 ? '正在上传 ' + progress + '%' : '上传完成，正在校验…') : '正在创建任务…') : '开始处理'}</button>
@@ -79,11 +79,30 @@ export function MediaResults({ id, active }: { id: string; active: boolean }) {
     {notice && <p className="notice" role="status">{notice}</p>}
     {(transcript.error || summary.error || regenerate.error) && <p className="error" role="alert">{(transcript.error || summary.error || regenerate.error)?.message}</p>}
     {tab === 'summary' ? <>
-      {result ? <><p className="result-meta">版本 {result.revision} · {result.model} · 提示词 {result.promptVersionId.slice(0, 8)}</p><SummaryContent data={JSON.parse(result.structuredJson) as StructuredSummary}/></> : <div className="empty">总结尚未生成，完成转写后会自动开始。</div>}
-      <button className="btn" disabled={!text || active || regenerate.isPending} onClick={() => regenerate.mutate()}>重新生成总结</button>
+      {result ? <><p className="result-meta">版本 {result.revision}{!result.isCurrent ? ' · 历史版本' : ''} · {result.model} · 提示词 {result.promptVersionId.slice(0, 8)}</p><SummaryContent data={JSON.parse(result.structuredJson) as StructuredSummary}/></> : <div className="empty">{summary.data?.versions.length ? '旧总结已转为历史版本，可通过版本菜单查看；新总结尚未完成。' : '总结尚未生成，完成转写后会自动开始。'}</div>}
+      <button className="btn" disabled={!transcript.data?.versions.some(version => version.isCurrent) || active || regenerate.isPending} onClick={() => { if (window.confirm('重新调用模型生成总结，旧总结将转为历史版本。确认继续？')) regenerate.mutate(); }}>重新生成总结</button>
     </> : text ? <>
-      <p className="result-meta">版本 {text.revision} · {text.model} · {text.timestampPrecision === 'CHUNK' ? '时间范围对应音频分片，不是逐句时间戳' : '带时间段落'}</p>
+      <p className="result-meta">版本 {text.revision}{!text.isCurrent ? ' · 历史版本' : ''} · {text.model} · {text.timestampPrecision === 'CHUNK' ? '时间范围对应音频分片，不是逐句时间戳' : '带时间段落'}</p>
       <div className="transcript-content">{text.segments.map((segment, index) => <article key={index}><span className="mono">{stamp(segment.startMs)} — {stamp(segment.endMs)}</span><p>{segment.text}</p></article>)}</div>
-    </> : <div className="empty">文稿尚未生成，正在等待音频转写。</div>}
+    </> : <div className="empty">{transcript.data?.versions.length ? '旧文稿已转为历史版本，可通过版本菜单查看；新文稿尚未完成。' : '文稿尚未生成，正在等待音频转写。'}</div>}
+  </section>;
+}
+
+export function ReprocessActions({ id, sourceType, active }: { id: string; sourceType: string; active: boolean }) {
+  const client = useQueryClient();
+  const [notice, setNotice] = useState('');
+  const choices = [
+    ...(sourceType === 'BILIBILI' ? [{ stage: 'FETCH', label: '重新下载', affected: '原视频、音频、文稿和总结' }] : []),
+    { stage: 'EXTRACT_AUDIO', label: '重新提取音频', affected: '音频、文稿和总结' },
+    { stage: 'TRANSCRIBE', label: '重新转写', affected: '文稿和总结' },
+  ];
+  const mutation = useMutation({ mutationFn: (choice: typeof choices[number]) => api('/videos/' + id + '/actions/reprocess', {
+    stage: choice.stage, force: true, reason: '用户确认' + choice.label,
+  }), onSuccess: () => { setNotice('已创建新任务，旧结果保留在历史版本中。'); void client.invalidateQueries({ queryKey: ['video', id] }); void client.invalidateQueries({ queryKey: ['videos'] }); } });
+  return <section className="panel"><h2>重新处理</h2><p className="subtitle">从所选阶段开始处理，并自动继续后续阶段。</p>
+    <div className="media-tabs">{choices.map(choice => <button key={choice.stage} className="btn" disabled={active || mutation.isPending} onClick={() => {
+      if (window.confirm(choice.label + '会重新执行该阶段，' + choice.affected + '将转为历史版本；后续模型调用可能产生费用。确认继续？')) { setNotice(''); mutation.mutate(choice); }
+    }}>{choice.label}</button>)}</div>
+    {notice && <p className="notice" role="status">{notice}</p>}{mutation.error && <p className="error" role="alert">{mutation.error.message}</p>}
   </section>;
 }
