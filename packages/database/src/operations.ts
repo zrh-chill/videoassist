@@ -4,14 +4,43 @@ import { DomainError, fingerprint } from '../../domain/src/index.js';
 import { normalizeCreator, type CreatorVideos } from '../../integrations/src/creators.js';
 import { importMedia } from './media.js';
 import { LEASE_MS } from './tasks.js';
+import { z } from 'zod';
+export const trackingSettingsSchema = z.object({ latestLimit: z.number().int().min(1).max(50), autoProcess: z.boolean() }).strict();
+async function trackingSettings(tx: Prisma.TransactionClient, initial?: { latestLimit: number; autoProcess: boolean }) {
+  const row = await tx.systemSettings.findUnique({ where: { id: 'creator-tracking' } });
+  if (row) return { ...trackingSettingsSchema.parse(JSON.parse(row.valuesJson)), revision: row.revision };
+  const first = await tx.creator.findFirst({ where: { deletedAt: null }, orderBy: { createdAt: 'asc' } });
+  const values = trackingSettingsSchema.parse(first ? { latestLimit: first.latestLimit, autoProcess: first.autoProcess } : initial || { latestLimit: 5, autoProcess: true });
+  await tx.systemSettings.create({ data: { id: 'creator-tracking', valuesJson: JSON.stringify(values) } });
+  await tx.creator.updateMany({ where: { deletedAt: null }, data: values });
+  return { ...values, revision: 0 };
+}
 export type OperationKind = 'CREATOR_CHECK' | 'BACKUP' | 'CLEANUP';
 export class Operations {
   constructor(public db: Database) {}
-  async addCreator(input: { source: string; latestLimit: number; autoProcess: boolean }, key: string) {
+  async trackingSettings() {
+    return this.db.$transaction(async tx => {
+      await tx.command.deleteMany({ where: { expiresAt: { lt: new Date() } } });
+      return trackingSettings(tx);
+    });
+  }
+  async saveTrackingSettings(input: { latestLimit: number; autoProcess: boolean; revision: number }) {
+    const values = trackingSettingsSchema.parse({ latestLimit: input.latestLimit, autoProcess: input.autoProcess });
+    return this.db.$transaction(async tx => {
+      await tx.command.deleteMany({ where: { expiresAt: { lt: new Date() } } });
+      const current = await trackingSettings(tx);
+      if (current.revision !== input.revision) throw new DomainError('SETTINGS_CONFLICT', '追踪设置已被修改，请重新打开后保存', false, 409);
+      await tx.systemSettings.update({ where: { id: 'creator-tracking' }, data: { valuesJson: JSON.stringify(values), revision: { increment: 1 } } });
+      await tx.creator.updateMany({ where: { deletedAt: null }, data: values });
+      return { ...values, revision: current.revision + 1 };
+    });
+  }
+  async addCreator(input: { source: string; latestLimit?: number; autoProcess?: boolean }, key: string) {
     const normalized = normalizeCreator(input.source);
     return this.command(key, { action: 'add-creator', ...input, source: normalized.uid }, async tx => {
-      const creator = await tx.creator.upsert({ where: { uid: normalized.uid }, create: { ...normalized, name: normalized.uid, latestLimit: input.latestLimit, autoProcess: input.autoProcess },
-        update: { deletedAt: null, enabled: true, latestLimit: input.latestLimit, autoProcess: input.autoProcess } });
+      const { latestLimit, autoProcess } = await trackingSettings(tx, { latestLimit: input.latestLimit ?? 5, autoProcess: input.autoProcess ?? true });
+      const creator = await tx.creator.upsert({ where: { uid: normalized.uid }, create: { ...normalized, name: normalized.uid, latestLimit, autoProcess },
+        update: { deletedAt: null, enabled: true, latestLimit, autoProcess } });
       return { id: creator.id };
     });
   }
