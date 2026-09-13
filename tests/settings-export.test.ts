@@ -40,10 +40,10 @@ beforeEach(async () => {
 afterEach(async () => {
   await db.$disconnect(); await new Promise<void>(resolve => server.close(() => resolve())); delete process.env.SETTINGS_TEST_KEY;
 });
-async function fixture(title = '导出测试') {
+async function fixture(title = '导出测试', long = true) {
   const video = await db.video.create({ data: { title, sourceType: 'LOCAL', overallStatus: 'COMPLETED', currentStage: 'SUMMARIZE' } });
   await db.$transaction(tx => persistMedia(tx, video.id, { transcript: {
-    fullText: '=危险公式\n' + '中'.repeat(32765) + '😀', language: 'zh', model: 'mock', provider: 'test', durationMs: 1, timestampPrecision: 'CHUNK', segments: [],
+    fullText: long ? '=危险公式\n' + '中'.repeat(32765) + '😀' : '先准备音频，再转写和总结。', language: 'zh', model: 'mock', provider: 'test', durationMs: 1, timestampPrecision: 'CHUNK', segments: [],
   } }));
   const transcript = (await db.transcript.findFirst({ where: { videoId: video.id } }))!;
   const prompt = await new Settings(db, config).activePrompt();
@@ -89,7 +89,7 @@ test('四类连接测试保存结果，失败脱敏且配置修改后标记过�
   } finally { await app.close(); }
 });
 test('提示词并发版本唯一、幂等重放不重新启用，Worker 使用选定正文并保留旧总结', async () => {
-  const video = await fixture(); const settings = new Settings(db, config);
+  const video = await fixture('提示词验收', false); const settings = new Settings(db, config);
   const old = (await db.summary.findFirst())!;
   const versions = await Promise.all([
     settings.createPrompt({ name: '新版本 A', body: '特别要求 A：保留数字，输出 JSON' }, 'prompt-a'),
