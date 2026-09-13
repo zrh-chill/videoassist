@@ -6,7 +6,7 @@ import type { VideoDto, VideoPage, VideoDetail, RunDto } from '../../../packages
 import { stages, statuses } from '../../../packages/contracts/src/index';
 import { api, useEvents } from './api';
 import './styles.css';
-import { AddVideoForm, MediaResults, sourceName } from './media';
+import { AddVideoForm, MediaResults, ReprocessActions, sourceName } from './media';
 
 const client = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchInterval: 10_000, refetchIntervalInBackground: true } } });
 const names: Record<string, string> = {
@@ -109,7 +109,8 @@ function Detail() {
     <header className="detail-hero"><div className="hero-thumb">▷</div><div><div className="eyebrow">VIDEO / KNOWLEDGE</div><h1>{video.title}</h1><p className="subtitle">{sourceName[video.sourceType]}{video.creatorName ? ' · ' + video.creatorName : ''} · 创建于 {time(video.createdAt)}</p>{video.originalUrl && <a className="detail-source" href={video.originalUrl} target="_blank" rel="noreferrer">打开原视频 ↗</a>}</div><Status status={video.overallStatus}/></header>
     {video.sourceType === 'SIMULATION' && <div className="notice"><strong>模拟处理结果</strong><span>此记录由模拟处理器生成，未调用真实模型。</span></div>}
     <div className="stage-grid">{stages.map(stage => {
-      const job = video.jobs.find(item => item.stage === stage);
+      const downstream = video.overallStatus !== 'COMPLETED' && video.currentStage && stages.indexOf(stage) > stages.indexOf(video.currentStage);
+      const job = downstream ? undefined : [...video.jobs].reverse().find(item => item.stage === stage);
       return <div className="panel stage-card" key={stage}><span className="eyebrow">0{stages.indexOf(stage) + 1}</span><h3>{names[stage]}</h3><Status status={job?.status || 'WAITING'}/><p>{job ? '已尝试 ' + job.attempt + ' 次' : '等待上游完成'}</p></div>;
     })}</div>
     <ErrorNotice error={action.error}/><ErrorNotice error={runs.error}/>
@@ -120,6 +121,7 @@ function Detail() {
     </div>
     {confirming && <div className="panel"><p>将重新执行「{names[video.currentStage || '']}」阶段，之前成功阶段的结果会被保留并复用。</p><button className="btn primary" disabled={action.isPending} onClick={() => action.mutate('retry')}>确认重试</button></div>}
     {video.sourceType !== 'SIMULATION' && <MediaResults id={video.id} active={!terminal}/>}
+    {video.sourceType !== 'SIMULATION' && <ReprocessActions id={video.id} sourceType={video.sourceType} active={!terminal}/>}
     <section className="panel"><h2>执行记录 <span className="count">{runs.data?.length ?? 0}</span></h2>
       {!runs.data?.length && <p className="subtitle">{video.overallStatus === 'CANCELED' ? '任务已取消，尚未执行任何阶段。' : '任务已持久化，等待 Worker 领取。'}</p>}
       {runs.data?.map(run => <article className="run" key={run.id}><div><strong>{names[run.stage]} · 第 {run.attempt} 次</strong><Status status={run.status}/></div><p className="mono">{time(run.startedAt)}{run.finishedAt ? ' · 耗时 ' + Math.max(0, (Date.parse(run.finishedAt) - Date.parse(run.startedAt)) / 1000).toFixed(1) + ' 秒' : ' · 正在执行'}</p>
