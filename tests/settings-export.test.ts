@@ -135,7 +135,7 @@ test('Excel 导出全部筛选结果、当前版本与记录，截断长文本�
     await db.transcript.updateMany({ data: { isCurrent: false } }); await db.summary.updateMany({ data: { isCurrent: false } });
     const empty = await app.inject({ url: '/api/v1/exports/videos.xlsx?q=' + encodeURIComponent('=导出测试') });
     const historical = new ExcelJS.Workbook(); await historical.xlsx.load(empty.rawPayload as never);
-    assert.equal(historical.getWorksheet('视频')!.getRow(2).getCell(13).value, '');
+    assert.equal(historical.getWorksheet('视频')!.getRow(2).getCell(13).value, null);
     assert.equal(historical.worksheets.length, 1);
   } finally { await app.close(); }
 });
