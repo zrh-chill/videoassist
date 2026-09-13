@@ -18,7 +18,7 @@ export function normalizeBilibiliUrl(input: string): { bvid: string; url: string
 }
 export function classifyBilibili(error: unknown): never {
   if (!(error instanceof ToolError)) throw error;
-  if (/429|412|rate.limit|too many/i.test(error.output)) throw new DomainError('BILIBILI_RATE_LIMITED', 'B 站请求受限，请稍后重试', true);
+  if (/429|412|server \((?:401|352)\)|rate.limit|too many/i.test(error.output)) throw new DomainError('BILIBILI_RATE_LIMITED', 'B 站请求受限，请稍后重试', true);
   if (/login|cookie|sign.in|会员|登录/i.test(error.output)) throw new DomainError('BILIBILI_COOKIE_EXPIRED', '视频需要有效登录态，请配置 B 站 Cookie 文件后重试');
   if (/404|not.available|not found|不存在|已删除/i.test(error.output)) throw new DomainError('BILIBILI_VIDEO_UNAVAILABLE', 'B 站视频已失效或不可访问');
   throw new DomainError('DOWNLOAD_FAILED', 'B 站解析或下载失败，请检查网络和 yt-dlp 配置', true);
