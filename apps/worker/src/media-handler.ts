@@ -14,7 +14,7 @@ import { simulationHandler } from '../../../packages/integrations/src/simulation
 
 export function mediaHandler(db: Database, config: AppConfig): StageHandler {
   async function checkpoint<T>(input: StageInput, kind: string, key: unknown, execute: () => Promise<T>): Promise<T> {
-    const id = fingerprint({ videoId: input.videoId, kind, key });
+    const id = fingerprint({ videoId: input.videoId, jobId: input.jobId, kind, key });
     const saved = await db.checkpoint.findUnique({ where: { id } });
     if (saved) return JSON.parse(saved.outputJson) as T;
     const output = await execute();
@@ -29,7 +29,7 @@ export function mediaHandler(db: Database, config: AppConfig): StageHandler {
     return output;
   }
   async function artifact(videoId: string, kind: 'SOURCE_VIDEO' | 'AUDIO') {
-    const saved = await db.artifact.findFirst({ where: { videoId, kind, deletedAt: null }, orderBy: { createdAt: 'desc' } });
+    const saved = await db.artifact.findFirst({ where: { videoId, kind, deletedAt: null, isCurrent: true }, orderBy: { createdAt: 'desc' } });
     if (!saved) throw new DomainError('ARTIFACT_MISSING', '所需媒体文件记录不存在，请重新导入');
     const current = await describeFile(config.dataDir, saved.storageKey, kind, saved.mimeType);
     if (current.sha256 !== saved.sha256) throw new DomainError('ARTIFACT_MISSING', '媒体文件已改变，请重新导入');
@@ -54,7 +54,7 @@ export function mediaHandler(db: Database, config: AppConfig): StageHandler {
       const source = await artifact(video.id, 'SOURCE_VIDEO');
       const sourceFile = resolveStorageKey(config.dataDir, source.storageKey);
       const metadata = await probeMedia(sourceFile, config, signal);
-      const storageKey = base + '/audio/' + source.sha256 + '-16k.flac';
+      const storageKey = base + '/audio/' + input.jobId + '-16k.flac';
       const target = resolveStorageKey(config.dataDir, storageKey);
       await mkdir(path.dirname(target), { recursive: true });
       if (!await stat(target).catch(() => null)) {
