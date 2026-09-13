@@ -6,12 +6,26 @@ import type { AppConfig } from '../../../packages/config/src/index.js';
 import { Operations, trackingSettingsSchema } from '../../../packages/database/src/operations.js';
 import { MediaLibrary } from '../../../packages/database/src/media.js';
 import { createProfileLookup } from '../../../packages/integrations/src/creator-profile.js';
+import { Tasks } from '../../../packages/database/src/tasks.js';
+import { resolveVideoCreator } from '../../../packages/integrations/src/bilibili.js';
 const options = z.object({ latestLimit: z.number().int().min(1).max(50), autoProcess: z.boolean(), enabled: z.boolean() });
 export function operationsRoutes(app: FastifyInstance, db: Database, config: AppConfig) {
   const operations = new Operations(db);
   const profile = createProfileLookup();
   const keyOf = (value: unknown) => z.string().min(1).max(128).parse(value);
   const idOf = (value: unknown) => z.object({ id: z.string().uuid() }).parse(value).id;
+  app.delete('/api/v1/videos/:id', request => new Tasks(db).softDelete(idOf(request.params)));
+  app.post('/api/v1/videos/:id/actions/track-creator', async request => {
+    const id = idOf(request.params);
+    const key = keyOf(request.headers['idempotency-key']);
+    await new Tasks(db).detail(id);
+    const video = await db.video.findUniqueOrThrow({ where: { id } });
+    if (!video.creatorUid && video.sourceType === 'BILIBILI' && video.bvid) {
+      const metadata = await resolveVideoCreator(video.bvid);
+      await db.video.updateMany({ where: { id, isDeleted: false }, data: metadata });
+    }
+    return operations.trackVideo(id, key);
+  });
   app.get('/api/v1/creators', () => db.creator.findMany({ where: { deletedAt: null }, orderBy: { createdAt: 'desc' } }));
   app.get('/api/v1/creators/settings', () => operations.trackingSettings());
   app.patch('/api/v1/creators/settings', request => operations.saveTrackingSettings(trackingSettingsSchema.extend({ revision: z.number().int().nonnegative() }).parse(request.body)));
