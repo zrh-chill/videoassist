@@ -48,7 +48,7 @@ export function CreatorsPage() {
 }
 function CreatorEditor({ creator, onClose, onSaved }: { creator: Creator | null; onClose: () => void; onSaved: (id: string) => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => { const element = dialog.current!; element.showModal(); return () => element.close(); }, []);
+  useEffect(() => { const element = dialog.current!; element.showModal(); element.querySelector<HTMLInputElement>('input')?.focus(); return () => element.close(); }, []);
   const save = useMutation({ mutationFn: async (form: HTMLFormElement) => {
     const values = new FormData(form); const body = { latestLimit: Number(values.get('limit')), autoProcess: values.has('auto') };
     if (creator) { await api('/creators/' + creator.id, body, 'PATCH'); return { id: creator.id }; }
