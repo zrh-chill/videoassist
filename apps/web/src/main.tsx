@@ -10,6 +10,7 @@ import './fidelity.css';
 import { AddVideoForm, MediaResults, ReprocessActions, sourceName } from './media';
 import { SettingsPage } from './settings';
 import { CreatorsPage, MaintenancePage } from './operations';
+import { VideoTable, VideoCover, VideoByline } from './video-table';
 
 const client = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchInterval: 10_000, refetchIntervalInBackground: true } } });
 const names: Record<string, string> = {
@@ -69,17 +70,6 @@ function AddVideoPage() {
     <ErrorNotice error={capability.error}/>
     <AddVideoForm maxBytes={capability.data?.uploadMaxBytes || 4 * 1024 ** 3} onDone={id => navigate('/videos/' + id)}/></>;
 }
-function VideoByline({ video }: { video: VideoDto }) {
-  return <span className="video-byline">{video.creatorName || (video.sourceType === 'LOCAL' ? '本地上传' : '未知 UP 主')} · {sourceName[video.sourceType]} · {video.publishedAt ? new Date(video.publishedAt).toLocaleDateString('zh-CN') : '发布日期未知'}</span>;
-}
-function VideoCover({ video }: { video: VideoDto }) {
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  let cover: string | null = null;
-  try { const url = new URL(video.coverUrl || ''); if (['http:', 'https:'].includes(url.protocol)) { url.protocol = 'https:'; cover = url.href; } } catch { /* No cover available. */ }
-  const seconds = video.durationMs == null ? null : Math.floor(video.durationMs / 1000);
-  const duration = seconds == null ? null : (seconds >= 3600 ? Math.floor(seconds / 3600) + ':' : '') + String(Math.floor(seconds / 60) % 60).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
-  return <span className="video-cover">{cover && failedUrl !== cover ? <img src={cover} alt={video.title + '的封面'} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailedUrl(cover)}/> : <span className="cover-empty">暂无封面</span>}{duration && <span className="cover-duration">{duration}</span>}</span>;
-}
 function VideoList() {
   const [search, setSearch] = useSearchParams();
   const [exportHistory, setExportHistory] = useState(false);
@@ -110,14 +100,7 @@ function VideoList() {
       <button className="btn small" onClick={() => setSearch({})}>重置</button></div>
     <ErrorNotice error={query.error}/>
     {search.has('creatorId') && <p className="notice">正在显示所选 UP 主已导入的视频。<Link to="/creators">返回 UP 主追踪 →</Link></p>}
-    <div className="table-wrap video-table"><table><thead><tr><th>视频</th><th>当前状态</th><th>创建时间</th><th><span className="sr-only">操作</span></th></tr></thead>
-      <tbody>{query.data?.items.map(video => <tr key={video.id}>
-        <td><Link className="video-link" to={'/videos/' + video.id}><VideoCover video={video}/><span className="video-copy"><strong title={video.title}>{video.title}</strong><VideoByline video={video}/><span className="video-excerpt" title={video.oneSentence || undefined}>{video.oneSentence || '暂无一句话总结'}</span></span></Link></td>
-        <td><Status status={video.overallStatus}/></td><td className="mono"><time dateTime={video.createdAt} title={time(video.createdAt)}>{new Date(video.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</time></td><td><Link className="icon-btn" aria-label={'查看详情：' + video.title} title="查看详情" to={'/videos/' + video.id}>↗</Link></td>
-      </tr>)}</tbody></table>
-      {query.isPending && <div className="empty">正在读取任务…</div>}
-      {query.data?.items.length === 0 && <div className="empty"><b>还没有匹配的任务</b><Link className="btn primary" to="/add">＋ 添加视频</Link></div>}
-    </div>
+    <VideoTable items={query.data?.items || []} loading={query.isPending} empty={<><b>还没有匹配的任务</b><Link className="btn primary" to="/add">＋ 添加视频</Link></>}/>
     <div className="pagination"><span>显示 {query.data?.items.length ?? 0} 条，共 {query.data?.total ?? 0} 条</span><div className="top-actions">{search.has('cursor') && <button className="btn small" onClick={() => filter('cursor', '')}>← 返回首页</button>}<button className="btn small" disabled={!query.data?.nextCursor} onClick={() => setSearch(previous => { const next = new URLSearchParams(previous); next.set('cursor', query.data!.nextCursor!); return next; })}>下一页 →</button></div></div>
   </>;
 }
