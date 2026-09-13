@@ -20,7 +20,7 @@ const names: Record<string, string> = {
 };
 const time = (value: string) => new Date(value).toLocaleString('zh-CN', { hour12: false });
 function Status({ status }: { status: string }) {
-  return <span className={'status ' + (status === 'FAILED' ? 'failed' : ['COMPLETED', 'SUCCEEDED'].includes(status) ? 'done' : ['WAITING', 'CANCELED', 'INTERRUPTED', 'QUEUED'].includes(status) ? 'waiting' : 'running')}>{names[status] || status}</span>;
+  return <span className={'status ' + (status === 'FAILED' ? 'failed' : ['COMPLETED', 'SUCCEEDED'].includes(status) ? 'done' : ['DISCOVERED', 'WAITING', 'CANCELED', 'INTERRUPTED', 'QUEUED'].includes(status) ? 'waiting' : 'running')}>{names[status] || status}</span>;
 }
 function ErrorNotice({ error }: { error: Error | null }) {
   return error ? <p className="error" role="alert">{error.message}</p> : null;
@@ -79,6 +79,7 @@ function VideoList() {
       <button className="btn" onClick={() => setSearch({})}>重置筛选</button></div>
     <div className="actions"><a className="btn" href={'/api/v1/exports/videos.xlsx?' + exportQuery.toString()} download>导出筛选结果 Excel</a><label className="checkbox"><input type="checkbox" checked={exportHistory} onChange={event => setExportHistory(event.target.checked)}/>包含处理记录</label><small className="subtitle">超长文稿和总结会标记截断，全文可在详情查看。</small></div>
     <ErrorNotice error={query.error}/>
+    {search.has('creatorId') && <p className="notice">正在显示所选 UP 主已导入的视频。<Link to="/creators">返回 UP 主追踪 →</Link></p>}
     <div className="table-wrap"><table><thead><tr><th>视频</th><th>来源</th><th>当前状态</th><th>创建时间</th><th>操作</th></tr></thead>
       <tbody>{query.data?.items.map(video => <tr key={video.id}>
         <td><Link className="video-link" to={'/videos/' + video.id}><span className="thumb">▷</span><span><strong>{video.title}</strong><small>{names[video.currentStage || ''] || '等待处理'}{video.latestErrorMessage ? ' · ' + video.latestErrorMessage : ''}</small></span></Link></td>
