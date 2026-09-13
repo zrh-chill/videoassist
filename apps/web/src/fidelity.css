@@ -163,7 +163,7 @@ input[type=checkbox] { accent-color:#24271f; }
 .stat-value { font-family:"DM Mono",monospace; }
 .stat-danger { color:var(--red); }
 .stat-meta { line-height:1.5; }
-.video-table { overflow:auto; }
+.video-table { position:relative; overflow:auto; }
 .video-table table { table-layout:fixed; min-width:740px; }
 .video-table th:first-child { width:46%; }
 .video-table th:nth-child(2) { width:11%; }
