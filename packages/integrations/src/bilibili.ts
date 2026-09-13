@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import path from 'node:path';
-import { mkdir, stat } from 'node:fs/promises';
+import { mkdir, stat, readdir, rename, unlink } from 'node:fs/promises';
 import type { AppConfig } from '../../config/src/index.js';
 import { DomainError } from '../../domain/src/index.js';
 import { resolveStorageKey } from '../../storage/src/index.js';
@@ -41,12 +41,32 @@ export async function bilibiliMetadata(url: string, config: AppConfig, signal: A
 export async function downloadBilibili(url: string, key: string, config: AppConfig, signal: AbortSignal) {
   const file = resolveStorageKey(config.dataDir, key);
   await mkdir(path.dirname(file), { recursive: true });
+  const temporary = file + '.download.mp4';
+  const bounded = new AbortController();
+  let oversized = false;
+  let checking = false;
+  // yt-dlp's per-stream limit cannot bound an unknown-length combined download.
+  const monitor = setInterval(async () => {
+    if (checking) return;
+    checking = true;
+    try {
+      const files = (await readdir(path.dirname(file))).filter(name => name.startsWith(path.basename(file)));
+      const sizes = await Promise.all(files.map(name => stat(path.join(path.dirname(file), name)).then(info => info.size).catch(() => 0)));
+      // Merging temporarily retains both input streams and the output.
+      if (sizes.reduce((total, size) => total + size, 0) > config.downloadMaxBytes * 2) { oversized = true; bounded.abort(); }
+    } finally { checking = false; }
+  }, 500);
   try {
     await runTool(config.ytdlp, [...args(config), '--no-progress', '--max-filesize', String(config.downloadMaxBytes),
       '--format', 'b[ext=mp4]/bv[height<=1080]+ba/b', '--merge-output-format', 'mp4',
       ...(path.isAbsolute(config.ffmpeg) ? ['--ffmpeg-location', config.ffmpeg] : []),
-      '--output', file, '--', normalizeBilibiliUrl(url).url], { signal, timeoutMs: 3600000, code: 'DOWNLOAD_FAILED' });
-    const info = await stat(file);
+      '--output', temporary, '--', normalizeBilibiliUrl(url).url], { signal: AbortSignal.any([signal, bounded.signal]), timeoutMs: 3600000, code: 'DOWNLOAD_FAILED' });
+    const info = await stat(temporary);
     if (info.size > config.downloadMaxBytes) throw new DomainError('DOWNLOAD_TOO_LARGE', '下载文件超过容量限制');
-  } catch (error) { classifyBilibili(error); }
+    await rename(temporary, file);
+  } catch (error) {
+    await unlink(temporary).catch(() => {});
+    if (oversized) throw new DomainError('DOWNLOAD_TOO_LARGE', '下载超过容量限制，已停止下载');
+    classifyBilibili(error);
+  } finally { clearInterval(monitor); }
 }
