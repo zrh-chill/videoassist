@@ -8,6 +8,7 @@ import { Tasks } from '../../../packages/database/src/tasks.js';
 import { receiveUpload, moveIntoStorage } from '../../../packages/storage/src/media.js';
 import { resolveStorageKey } from '../../../packages/storage/src/index.js';
 import { probeMedia } from '../../../packages/integrations/src/ffmpeg.js';
+import { resolveVideoCreator } from '../../../packages/integrations/src/bilibili.js';
 import { resolveBilibiliUrl } from '../../../packages/integrations/src/bilibili-links.js';
 import { DomainError } from '../../../packages/domain/src/index.js';
 import { z } from 'zod';
@@ -28,6 +29,15 @@ export function mediaRoutes(app: FastifyInstance, db: Database, base: AppConfig)
     const key = requestKey(request.headers['idempotency-key']);
     const normalized = await resolveBilibiliUrl(body.url);
     const result = await media.importVideo({ sourceType: 'BILIBILI', title: normalized.bvid, bvid: normalized.bvid, originalUrl: normalized.url }, key);
+    if (!result.duplicate && await db.creator.count({ where: { deletedAt: null } })) {
+      // Associate before downloading; metadata processing retries this if the public lookup is unavailable.
+      const metadata = await resolveVideoCreator(normalized.bvid).catch(() => null);
+      if (metadata) await db.$transaction(async tx => {
+        const creator = await tx.creator.findFirst({ where: { uid: metadata.creatorUid, deletedAt: null } });
+        await tx.video.updateMany({ where: { id: result.id, isDeleted: false }, data: { ...metadata, creatorId: creator?.id } });
+        await tx.event.create({ data: { videoId: result.id, payload: JSON.stringify({ videoId: result.id }) } });
+      });
+    }
     return reply.code(result.duplicate ? 200 : 201).send(result);
   });
   app.post(prefix + '/uploads', async (request, reply) => {
