@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { MediaOutput } from './media.js';
 
 export const stages = ['FETCH', 'EXTRACT_AUDIO', 'TRANSCRIBE', 'SUMMARIZE'] as const;
 export const stageSchema = z.enum(stages);
@@ -13,6 +14,7 @@ export const createSimulationSchema = z.object({
 export const listQuerySchema = z.object({
   q: z.string().max(200).default(''),
   status: z.enum(statuses).optional(),
+  sourceType: z.enum(['LOCAL', 'BILIBILI', 'SIMULATION']).optional(),
   cursor: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -30,11 +32,15 @@ export interface JobDto {
   id: string; stage: Stage; status: string; attempt: number; maxAttempts: number;
   availableAt: string; cancelRequestedAt: string | null;
 }
-export interface VideoDetail extends VideoDto { jobs: JobDto[] }
+export interface VideoDetail extends VideoDto {
+  jobs: JobDto[]; originalUrl?: string | null; localOriginalName?: string | null;
+  creatorName?: string | null; durationMs?: number | null;
+}
 export interface VideoPage { items: VideoDto[]; nextCursor: string | null; total: number }
 export interface TaskEvent { videoId: string; status: VideoStatus; stage: Stage | null }
 export interface StageInput {
   videoId: string; title: string; stage: Stage; attempt: number;
+  jobId?: string; leaseOwner?: string; sourceType?: string;
   options: { failStage?: Stage; retryableFailure?: boolean };
 }
-export interface StageResult { simulated: boolean; text: string }
+export interface StageResult extends MediaOutput { simulated: boolean; text: string }
