@@ -20,6 +20,7 @@
     "start:worker": "tsx apps/worker/src/main.ts"
   },
   "dependencies": {
+    "exceljs": "^4.4.0",
     "@fastify/multipart": "^9.0.0",
     "js-tiktoken": "^1.0.21",
     "@prisma/client": "6.19.3",
