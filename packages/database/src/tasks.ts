@@ -61,13 +61,20 @@ export class Tasks {
       this.db.video.findMany({
         where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}), take: query.limit + 1,
-        select: videoSelect,
+        select: { ...videoSelect, summaries: { where: { isCurrent: true }, orderBy: { revision: 'desc' }, take: 1, select: { structuredJson: true } } },
       }),
       this.db.video.count({ where }),
     ]);
     const hasMore = items.length > query.limit;
     if (hasMore) items.pop();
-    return { items, total, nextCursor: hasMore ? items.at(-1)!.id : null };
+    return { items: items.map(({ summaries, ...video }) => {
+      let oneSentence: string | null = null;
+      try {
+        const parsed = JSON.parse(summaries[0]?.structuredJson ?? '{}');
+        if (typeof parsed?.one_sentence === 'string') oneSentence = parsed.one_sentence;
+      } catch { /* A malformed historical response must not break the video list. */ }
+      return { ...video, oneSentence };
+    }), total, nextCursor: hasMore ? items.at(-1)!.id : null };
   }
 
   async detail(id: string) {
@@ -220,4 +227,5 @@ export class Tasks {
 const videoSelect = {
   id: true, title: true, sourceType: true, overallStatus: true, currentStage: true,
   latestErrorCode: true, latestErrorMessage: true, createdAt: true, updatedAt: true,
+  coverUrl: true, durationMs: true, creatorName: true, publishedAt: true,
 } as const;
