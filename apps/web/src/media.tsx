@@ -5,12 +5,13 @@ import type { TranscriptDto, SummaryDto, StructuredSummary } from '../../../pack
 
 export const sourceName: Record<string, string> = { LOCAL: '本地视频', BILIBILI: 'B 站', SIMULATION: '模拟任务' };
 export function AddVideoForm({ onDone, maxBytes }: { onDone: (id: string) => void; maxBytes: number }) {
-  const [mode, setMode] = useState<'bilibili' | 'local'>('bilibili');
+  const [mode, setMode] = useState<'bilibili' | 'local'>('local');
   const [progress, setProgress] = useState(0);
+  const [file, setFile] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
   const mutation = useMutation({ mutationFn: async (form: HTMLFormElement) => {
     const data = new FormData(form);
     if (mode === 'bilibili') return api<{ id: string }>('/videos/bilibili', { url: data.get('url') });
-    const file = data.get('file') as File;
     if (!file?.size) throw new Error('请选择视频文件');
     if (file.size > maxBytes) throw new Error('文件超过上传容量限制');
     return new Promise<{ id: string }>((resolve, reject) => {
@@ -28,17 +29,30 @@ export function AddVideoForm({ onDone, maxBytes }: { onDone: (id: string) => voi
       const upload = new FormData(); upload.set('file', file); xhr.send(upload);
     });
   }, onSuccess: data => onDone(data.id) });
-  return <section className="panel">
-    <div className="media-tabs"><button className={'btn ' + (mode === 'bilibili' ? 'primary' : '')} disabled={mutation.isPending} onClick={() => { setMode('bilibili'); mutation.reset(); }}>B 站链接</button>
-      <button className={'btn ' + (mode === 'local' ? 'primary' : '')} disabled={mutation.isPending} onClick={() => { setMode('local'); mutation.reset(); }}>本地上传</button></div>
+  const pendingLabel = mode === 'local' ? (progress < 100 ? '正在上传 ' + progress + '%' : '上传完成，正在校验…') : '正在创建任务…';
+  return <div className="add-grid"><section className="panel add-panel">
+    <div className="panel-head"><h2>创建处理任务</h2><p>提交后将自动完成音频提取、全文转写和 AI 总结</p></div>
+    <div className="panel-body"><div className="source-tabs" aria-label="视频来源">
+      <button type="button" aria-pressed={mode === 'local'} className={'source-tab' + (mode === 'local' ? ' active' : '')} disabled={mutation.isPending} onClick={() => { setMode('local'); mutation.reset(); }}>本地视频</button>
+      <button type="button" aria-pressed={mode === 'bilibili'} className={'source-tab' + (mode === 'bilibili' ? ' active' : '')} disabled={mutation.isPending} onClick={() => { setMode('bilibili'); mutation.reset(); }}>B 站链接</button></div>
     <form className="media-import" onSubmit={event => { event.preventDefault(); setProgress(0); mutation.mutate(event.currentTarget); }}>
-      {mode === 'bilibili' ? <label>B 站视频链接<input name="url" type="url" required placeholder="https://www.bilibili.com/video/BV…/" disabled={mutation.isPending}/><small>支持 BV 链接与 b23.tv 短链接，仅处理第一分 P；相同 BVID 会打开已有任务。</small></label>
-        : <label>选择本地视频<input name="file" type="file" accept=".mp4,.mov,.mkv,.webm,.avi,.m4v" required disabled={mutation.isPending}/><small>支持常见视频格式，单文件最多 {(maxBytes / 1024 ** 3).toFixed(1)} GiB。</small></label>}
+      <div key={mode} className="add-mode">{mode === 'bilibili' ? <div className="url-card"><h3>粘贴 B 站视频链接</h3><p>自动获取视频信息，生成完整文稿与结构化总结。</p>
+        <label><span className="sr-only">B 站视频链接</span><input className="field" name="url" type="url" required placeholder="https://www.bilibili.com/video/BV…/" disabled={mutation.isPending}/></label><div className="url-example">支持 bilibili.com 与 b23.tv 短链接<br/>仅处理第一分 P；重复链接会打开已有任务。</div>
+        <button className="btn acid" disabled={mutation.isPending}>{mutation.isPending ? pendingLabel : '解析并创建任务 →'}</button></div>
+        : <><div className={'dropzone' + (dragging ? ' dragging' : '')} onDragOver={event => { event.preventDefault(); if (!mutation.isPending) setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); if (!mutation.isPending) { setFile(event.dataTransfer.files[0] ?? null); mutation.reset(); } }}>
+          <input className="file-input" aria-label="选择本地视频" type="file" accept=".mp4,.mov,.mkv,.webm,.avi,.m4v" disabled={mutation.isPending} onChange={event => { setFile(event.target.files?.[0] ?? null); mutation.reset(); }}/>
+          <div><div className="upload-icon" aria-hidden="true">⇧</div><h3>{file ? file.name : '拖入视频文件'}</h3><p>{file ? (file.size / 1024 ** 2).toFixed(1) + ' MiB · 已选择' : '支持 MP4、MOV、MKV 等常见格式'}<br/>单文件最大 {(maxBytes / 1024 ** 3).toFixed(1)} GiB</p><span className="btn">{file ? '重新选择文件' : '选择本地文件'}</span></div>
+        </div>{file && <button className="btn primary upload-submit" disabled={mutation.isPending}>{mutation.isPending ? pendingLabel : '上传并开始处理 →'}</button>}
+        {mutation.isPending && <progress className="upload-progress" aria-label="上传进度" max="100" value={progress}/>}</>}
+      </div>
       {mutation.error && <p className="error" role="alert">{mutation.error.message}</p>}
-      <button className="btn primary" disabled={mutation.isPending}>{mutation.isPending ? (mode === 'local' ? (progress < 100 ? '正在上传 ' + progress + '%' : '上传完成，正在校验…') : '正在创建任务…') : '开始处理'}</button>
-    </form>
-  </section>;
+      {mutation.isPending && <p className="result-meta" role="status">{pendingLabel}，请保持页面打开。</p>}
+    </form></div>
+  </section><aside className="panel add-panel"><div className="panel-head"><h2>处理流程</h2><p>全程自动执行，结果持续保存</p></div><div className="panel-body workflow">{[
+    ['获取视频', '读取本地文件或下载 B 站视频'], ['提取音频', '提取清晰音轨，为全文转写做好准备'], ['全文转写', '使用已配置的语音模型识别视频内容'], ['结构化总结', '一句话摘要、核心要点、详细总结、关键词'], ['保存结果', '结果入库，可随时查看或导出'],
+  ].map(([title, description], index) => <div className="flow-step" key={title}><div className="flow-no">{String(index + 1).padStart(2, '0')}</div><div className="flow-copy"><strong>{title}</strong><span>{description}</span></div></div>)}</div></aside></div>;
 }
+
 interface Version { id: string; revision: number; isCurrent: boolean }
 interface Versioned<T> { current: T | null; versions: Version[] }
 function VersionSelect({ label, value, versions, onChange }: { label: string; value: string; versions: Version[]; onChange: (value: string) => void }) {
