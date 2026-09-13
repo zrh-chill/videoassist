@@ -92,7 +92,7 @@ export function splitText(text: string, budget: number): string[] {
   return result;
 }
 async function jsonCompletion<T>(system: string, user: string, schema: z.ZodType<T>, config: AppConfig, signal: AbortSignal): Promise<T> {
-  const messages = [{ role: 'system', content: system }, { role: 'user', content: user }];
+  const messages = [{ role: 'system', content: system + '\n输出必须符合以下 JSON Schema，仅输出 JSON：' + JSON.stringify(z.toJSONSchema(schema)) }, { role: 'user', content: user }];
   for (let attempt = 0; attempt < 2; attempt++) {
     const raw = await modelRequest('LLM', endpoint(config.llm.url, 'chat/completions'), JSON.stringify({
       model: config.llm.model, messages, temperature: 0.2, max_tokens: config.llmMaxOutputTokens,
