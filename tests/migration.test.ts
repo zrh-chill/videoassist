@@ -31,7 +31,7 @@ test('真实迁移命令可初始化空目录且重复运行无副作用', async
   try {
     assert.equal(await db.video.count(), 1);
     const migrations = await db.$queryRawUnsafe<Array<{ finished_at: unknown }>>('SELECT finished_at FROM _prisma_migrations');
-    assert.equal(migrations.length, 3);
+    assert.equal(migrations.length, 4);
     assert.ok(migrations.every(migration => migration.finished_at));
   } finally { await db.$disconnect(); }
 });
