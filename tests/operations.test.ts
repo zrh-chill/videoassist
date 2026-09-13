@@ -12,7 +12,7 @@ import { Operations } from '../packages/database/src/operations.js';
 import { Tasks, LEASE_MS } from '../packages/database/src/tasks.js';
 import { MediaLibrary, persistMedia } from '../packages/database/src/media.js';
 import { OperationWorker } from '../apps/worker/src/operations.js';
-import { normalizeCreator, type CreatorVideos } from '../packages/integrations/src/creators.js';
+import { fetchCreatorVideos, normalizeCreator, type CreatorVideos } from '../packages/integrations/src/creators.js';
 import { initializeStorage, resolveStorageKey } from '../packages/storage/src/index.js';
 import { describeFile } from '../packages/storage/src/media.js';
 import { backupWorkspace, cleanupWorkspace, checkedFile } from '../packages/storage/src/maintenance.js';
@@ -36,6 +36,17 @@ test('UP 主仅接受 UID 或受支持主页，拒绝凭据和伪造域名', () 
   assert.equal(normalizeCreator('https://space.bilibili.com/12345?from=test').uid, '12345');
   assert.equal(normalizeCreator('12345').url, 'https://space.bilibili.com/12345/upload/video');
   for (const input of ['0', 'https://space.bilibili.com.evil/12345', 'http://space.bilibili.com/12345', 'https://user@space.bilibili.com/12345', 'https://space.bilibili.com/12345/favlist']) assert.throws(() => normalizeCreator(input));
+});
+test('精简投稿列表补齐标题昵称，数量受限且伪造视频链接不进入元数据请求', async () => {
+  let calls = 0;
+  const providers = {
+    runTool: async () => JSON.stringify({ entries: [{ id: 'BV17xo9BsEnx' }, { id: 'BV1JttL67Ek6' }] }),
+    bilibiliMetadata: async () => { calls++; return { title: '补齐标题', creatorName: '补齐昵称', durationMs: 1000 }; },
+  };
+  const result = await fetchCreatorVideos('12345', 1, config, signal(), providers);
+  assert.equal(result.name, '补齐昵称'); assert.equal(result.videos[0]!.title, '补齐标题'); assert.equal(calls, 1);
+  await assert.rejects(fetchCreatorVideos('12345', 1, config, signal(), { ...providers, runTool: async () => JSON.stringify({ entries: [{ url: 'https://private.invalid/video' }] }) }), { code: 'UNSUPPORTED_BILIBILI_URL' });
+  assert.equal(calls, 1);
 });
 test('检查幂等去重、只发现不处理与手动启动，列表和导出复用 UP 主条件', async () => {
   const creator = await add();
