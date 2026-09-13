@@ -44,7 +44,7 @@ function PageRoutes() {
 function Layout() {
   const connected = useEvents();
   const location = useLocation();
-  const count = useQuery({ queryKey: ['videos', 'count'], queryFn: () => api<VideoPage>('/videos?limit=1') });
+  const count = useQuery({ queryKey: ['videos', 'count', ''], queryFn: () => api<VideoPage>('/videos?limit=1') });
   return <div className="app">
     <aside className="sidebar">
       <Link to="/" className="brand"><span className="brand-mark">帧</span><span><strong>帧语</strong><small>FRAMENOTE</small></span></Link>
