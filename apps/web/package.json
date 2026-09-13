@@ -8,6 +8,8 @@
     "build": "vite build"
   },
   "dependencies": {
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "@tanstack/react-query": "^5.90.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
