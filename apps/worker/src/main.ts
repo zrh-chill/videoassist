@@ -6,6 +6,8 @@ import { checkTools } from '../../../packages/integrations/src/ffmpeg.js';
 import { Worker } from './runner.js';
 import { mediaHandler } from './media-handler.js';
 import { Settings } from '../../../packages/database/src/settings.js';
+import { OperationWorker } from './operations.js';
+import { createLogger } from '../../../packages/storage/src/logging.js';
 
 const config = loadConfig();
 await initializeStorage(config.dataDir);
@@ -17,5 +19,11 @@ catch { console.warn(JSON.stringify({ event: 'media_tools_unavailable', message:
 const shutdown = new AbortController();
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => shutdown.abort());
 console.log(JSON.stringify({ event: 'worker_started', mode: 'media', concurrency: 1 }));
-try { await new Worker(new Tasks(db), { execute: async (input, signal) => mediaHandler(db, await settings.effective()).execute(input, signal) }).run(shutdown.signal); }
+const log = createLogger(config.dataDir, 'worker');
+try { await new Worker(new Tasks(db), { execute: async (input, signal) => {
+  const started = Date.now();
+  await log({ event: 'stage_started', jobId: input.jobId, videoId: input.videoId, stage: input.stage, attempt: input.attempt });
+  try { return await mediaHandler(db, await settings.effective()).execute(input, signal); }
+  finally { await log({ event: 'stage_execution_ended', jobId: input.jobId, videoId: input.videoId, stage: input.stage, durationMs: Date.now() - started }); }
+} }).run(shutdown.signal, new OperationWorker(db, config)); }
 finally { await db.$disconnect(); }
