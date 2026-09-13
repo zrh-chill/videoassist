@@ -317,12 +317,12 @@ input[type=checkbox] { accent-color:#24271f; }
  .creator-identity p { max-width:280px; }
 }
 @media(max-width:760px) {
- .creator-card { grid-template-columns:42px minmax(0,1fr) auto; gap:12px; padding:16px; }
- .creator-card .creator-stat { grid-column:3; grid-row:1; }
- .creator-card>.btn { grid-row:2; }
- .creator-card>.btn:first-of-type { grid-column:1/3; justify-self:start; }
- .creator-card>.creator-toggle { grid-column:2/4; justify-self:end; margin-right:36px; }
- .creator-card>.icon-btn { grid-row:2; grid-column:3; justify-self:end; }
+ .creator-card { display:flex; flex-wrap:wrap; gap:12px; padding:16px; }
+ .creator-card .avatar { flex:0 0 42px; }
+ .creator-identity { flex:1 1 calc(100% - 130px); }
+ .creator-card .creator-stat { flex:0 0 40px; }
+ .creator-card>.creator-toggle { margin-left:auto; }
+ .creator-card>.icon-btn { flex:0 0 30px; }
  .creator-stat { padding:0 0 0 12px; }
  .creator-videos { padding:0 14px 16px; }
  .creator-inline-error { padding:0 16px 12px; }
