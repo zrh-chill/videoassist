@@ -41,10 +41,10 @@ export class Worker {
     }
     return true;
   }
-  async run(signal: AbortSignal) {
+  async run(signal: AbortSignal, background?: { tick(signal?: AbortSignal): Promise<boolean> }) {
     while (!signal.aborted) {
       try {
-        if (!await this.tick(signal)) await delay(1000, undefined, { signal });
+        if (!await background?.tick(signal) && !await this.tick(signal)) await delay(1000, undefined, { signal });
       } catch {
         if (!signal.aborted) {
           process.stderr.write(JSON.stringify({ level: 'error', code: 'WORKER_TICK_FAILED', message: '任务调度暂时失败，稍后重试' }) + '\n');
