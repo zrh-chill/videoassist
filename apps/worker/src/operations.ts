@@ -34,12 +34,16 @@ export class OperationWorker {
         result = await this.fetchVideos(creator.uid, creator.latestLimit, config, operation.signal);
       } else if (job.kind === 'BACKUP') result = await backupWorkspace(this.db, config, job.id, operation.signal);
       else result = await cleanupWorkspace(this.db, config, operation.signal);
-      if (!shutdown?.aborted) await this.operations.finish(job.id, owner, result);
-      await log({ event: 'operation_finished', jobId: job.id, kind: job.kind, status: 'SUCCEEDED' });
+      if (!shutdown?.aborted && await this.operations.finish(job.id, owner, result)) {
+        const stored = await this.db.operation.findUniqueOrThrow({ where: { id: job.id } });
+        await log({ event: 'operation_finished', jobId: job.id, kind: job.kind, status: stored.status });
+      }
     } catch (error) {
       const safe = publicError(error);
-      if (!shutdown?.aborted) await this.operations.finish(job.id, owner, null, safe);
-      await log({ event: 'operation_finished', jobId: job.id, kind: job.kind, status: 'FAILED', errorCode: safe.code, message: safe.message });
+      if (!shutdown?.aborted && await this.operations.finish(job.id, owner, null, safe)) {
+        const stored = await this.db.operation.findUniqueOrThrow({ where: { id: job.id } });
+        await log({ event: 'operation_finished', jobId: job.id, kind: job.kind, status: stored.status, errorCode: safe.code, message: safe.message });
+      }
     } finally { monitor.abort(); await heartbeat; shutdown?.removeEventListener('abort', stop); }
     return true;
   }
