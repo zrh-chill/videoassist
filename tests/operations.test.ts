@@ -153,3 +153,30 @@ test('结构化日志脱敏并按容量轮转，API 不记录查询和请求正�
   const after = (await Promise.all((await readdir(path.join(config.dataDir, 'logs'))).map(file => readFile(path.join(config.dataDir, 'logs', file), 'utf8')))).join('');
   assert.ok(!after.includes('private-query'));
 });
+
+
+test('全局追踪设置持久化并应用所有 UP 主，添加不创建检查且拒绝单独配置', async () => {
+  const first = await add(false);
+  const original = await operations.trackingSettings();
+  await operations.editCreator(first.id, { enabled: false });
+  await operations.saveTrackingSettings({ latestLimit: 2, autoProcess: false, revision: original.revision });
+  const restored = await new Operations(db).trackingSettings();
+  assert.equal(restored.latestLimit, 2); assert.equal(restored.autoProcess, false);
+  await assert.rejects(operations.saveTrackingSettings({ latestLimit: 3, autoProcess: true, revision: original.revision }), /已被修改/);
+  const app = createApp(db, config);
+  try {
+    const added = await app.inject({ method: 'POST', url: '/api/v1/creators', headers: { 'idempotency-key': randomUUID() }, payload: { source: '67890' } });
+    assert.equal(added.statusCode, 200);
+    const second = await db.creator.findUniqueOrThrow({ where: { id: added.json().id } });
+    assert.equal(second.latestLimit, 2); assert.equal(second.autoProcess, false);
+    const previous = await db.creator.findUniqueOrThrow({ where: { id: first.id } });
+    assert.equal(previous.latestLimit, 2); assert.equal(previous.enabled, false);
+    assert.equal(await db.operation.count(), 0);
+    const rejected = await app.inject({ method: 'PATCH', url: '/api/v1/creators/' + second.id, payload: { latestLimit: 10 } });
+    assert.equal(rejected.statusCode, 400);
+    await operations.enqueue('CREATOR_CHECK', randomUUID(), second.id);
+    await new OperationWorker(db, config, async (_uid, limit) => { assert.equal(limit, 2); return found; }).tick();
+    assert.equal((await db.video.findFirstOrThrow()).overallStatus, 'DISCOVERED');
+    assert.equal(await db.job.count(), 0);
+  } finally { await app.close(); }
+});
