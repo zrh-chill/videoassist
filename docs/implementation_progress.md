@@ -40,6 +40,29 @@
 
 升级注意：此前未完成任务的旧格式分片检查点不再命中，可能重新调用已成功分片；已经完成的文稿和总结保留。
 
+## 阶段 4：结果管理与导出 — 已完成
+
+- [x] 列表与导出共用标题、来源、状态筛选；导出全部匹配记录而非当前页。
+- [x] ExcelJS 流式 writer，分批查询、逐行提交；视频工作表及可选处理记录工作表，不导出旧版本全文与原始工具日志。
+- [x] 文稿/总结长单元格截断标记、代理对边界、控制字符处理与公式注入防护；数据库全文保持完整。
+- [x] 持久设置与乐观锁；环境变量优先、数据库其次、默认值最后，页面标记来源。
+- [x] 密钥仅接受 env/file 引用，Cookie 仅 file 引用；不回显引用路径、密钥或接口查询凭据。
+- [x] API 上传与 Worker 后续阶段读取新设置；错误工具路径不阻止服务启动，设置页仍可修复。
+- [x] FFmpeg/FFprobe、yt-dlp、S2T 短语音、LLM 结构化输出测试；持久结果与配置变化提示。
+- [x] 不可变提示词序号迁移、创建/启用、相同正文复用、幂等与并发版本分配；Worker 绑定实际启用版本。
+- [x] 设置六组页面、提示词编辑与历史选择、列表导出入口；保留页面渐入渐出。
+
+阶段 4 验收：
+
+- 34 项全量测试通过；模型输出契约调整后相关 15 项再次通过；新增错误工具配置启动专项通过，共 35 项测试覆盖。
+- pnpm build 与最终 TypeScript 检查通过。Windows 构建须避开正在运行的测试/API/Worker 引擎占用。
+- 实际数据库第四次迁移成功，原测试视频与既有文稿、总结关联保留。
+- Edge 1440×1000 / 390×844：列表筛选 → 下载真实 Excel → 系统设置 → 四类真实连接测试 → 刷新后结果保留。
+- 实际 SenseVoice 短语音转写与 Qwen 结构化总结测试均通过；Excel 读取确认 1 条 B 站视频及处理记录。
+- 设置保存反馈与提示词启用/历史选择使用浏览器响应桩验收，未改动实际配置与启用版本；持久保存、并发、Worker 新提示词生效由集成测试覆盖。
+- 页面身份、非空内容、无错误覆盖层、无控制台错误、截图与交互检查均通过；窄屏无横向溢出。
+- Browser 技能未提供，沿用系统 Edge + 已安装 Playwright。截图：phase4-settings-desktop.png、phase4-settings-mobile.png、phase4-prompt.png；实际导出样例 phase4-export.xlsx 均位于本任务 visualizations 目录。
+
 ## 真实视频验收
 
 - 视频：https://www.bilibili.com/video/BV17xo9BsEnx/
@@ -72,7 +95,6 @@ Prisma 在 Windows 对已有 WAL 数据库执行迁移时出现锁冲突。迁�
 
 ## 后续工作
 
-- 阶段 4：Excel 导出、设置与连接测试、提示词管理界面。
 - 阶段 5：UP 主追踪、手动检查、备份、临时文件清理、日志轮转及完整 V1 验收。
 
 当前保留所有原视频和音频；在线备份、自动清理尚未实现。外部调用完成但本地检查点提交前崩溃时仍可能产生重复模型调用。
@@ -82,3 +104,4 @@ Prisma 在 Windows 对已有 WAL 数据库执行迁移时出现锁冲突。迁�
 - SenseVoice 请求/响应：https://docs.siliconflow.cn/docs/api/audio-transcriptions-post
 - Qwen 结构化输出：https://docs.modelstudio.console.alibabacloud.com/zh/model-studio/qwen-structured-output
 - 采用 JSON Object 模式兼容当前 Qwen 模型，再进行本地严格字段校验。
+- ExcelJS 流式 writer： https://github.com/exceljs/exceljs#streaming-xlsx-writer （实现时同时核对已安装 4.4.0 的 README 和类型声明）。
