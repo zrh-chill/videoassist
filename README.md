@@ -49,6 +49,8 @@ pnpm start:worker
 
 构建后的前端由 API 同源提供，可直接访问 http://127.0.0.1:3001。开发时可分别执行 pnpm dev:api、pnpm dev:worker 和 pnpm dev:web。
 
+Windows 下执行 pnpm build 或 pnpm db:generate 前，应先停止正在运行的 API/Worker，以免 Prisma 引擎 DLL 被占用。仅构建前端可在服务运行时执行 pnpm --filter @videoassist/web build。
+
 ## 验证
 
 ```powershell
