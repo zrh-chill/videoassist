@@ -10,6 +10,10 @@ export async function persistMedia(tx: Prisma.TransactionClient, videoId: string
     await tx.artifact.updateMany({ where: { videoId, kind: data.kind, isCurrent: true }, data: { isCurrent: false } });
     await tx.artifact.upsert({ where: { storageKey: data.storageKey }, create: data, update: { isCurrent: true } });
   }
+  if (output.metadata?.creatorUid) {
+    const creator = await tx.creator.findFirst({ where: { uid: output.metadata.creatorUid, deletedAt: null } });
+    if (creator) await tx.video.update({ where: { id: videoId }, data: { creatorId: creator.id } });
+  }
   if (output.metadata) await tx.video.update({ where: { id: videoId }, data: {
     ...output.metadata, publishedAt: output.metadata.publishedAt ? new Date(output.metadata.publishedAt) : undefined,
   } });
@@ -35,14 +39,19 @@ export async function persistMedia(tx: Prisma.TransactionClient, videoId: string
 export interface ImportInput {
   id?: string; sourceType: 'LOCAL' | 'BILIBILI'; title: string; bvid?: string; originalUrl?: string;
   localOriginalName?: string; durationMs?: number; sourceHash?: string; artifact?: MediaArtifact;
-  creatorId?: string; creatorName?: string; autoProcess?: boolean;
+  creatorId?: string; creatorName?: string; creatorUid?: string; autoProcess?: boolean;
 }
 export async function importMedia(tx: Prisma.TransactionClient, input: ImportInput) {
   const { artifact, autoProcess = true, ...videoData } = input;
   const existing = input.bvid ? await tx.video.findUnique({ where: { sourceType_bvid: { sourceType: 'BILIBILI', bvid: input.bvid } } }) : null;
   if (existing) {
-    if (input.creatorId && !existing.creatorId) await tx.video.update({ where: { id: existing.id }, data: { creatorId: input.creatorId } });
+    if (existing.isDeleted) return { id: existing.id, duplicate: true, deleted: true };
+    if (input.creatorId && !existing.creatorId) await tx.video.update({ where: { id: existing.id }, data: { creatorId: input.creatorId, creatorUid: input.creatorUid } });
     return { id: existing.id, duplicate: true };
+  }
+  if (!videoData.creatorId && videoData.creatorUid) {
+    const creator = await tx.creator.findFirst({ where: { uid: videoData.creatorUid, deletedAt: null } });
+    if (creator) videoData.creatorId = creator.id;
   }
   const stage = input.sourceType === 'LOCAL' ? 'EXTRACT_AUDIO' : 'FETCH';
   const status = autoProcess ? 'WAITING' : 'DISCOVERED';
@@ -66,6 +75,7 @@ export class MediaLibrary {
         return JSON.parse(prior.responseJson) as { id: string; duplicate: boolean };
       }
       const result = await importMedia(tx, input);
+      if (result.deleted) throw new DomainError('VIDEO_DELETED', '该视频记录已删除', false, 409);
       await tx.command.create({ data: { key, fingerprint: hash, responseJson: JSON.stringify(result), expiresAt: new Date(Date.now() + 86400000) } });
       return result;
     });
@@ -83,7 +93,7 @@ export class MediaLibrary {
         return JSON.parse(prior.responseJson);
       }
       const video = await tx.video.findUnique({ where: { id: videoId } });
-      if (!video) throw new DomainError('VIDEO_NOT_FOUND', '视频不存在', false, 404);
+      if (!video || video.isDeleted) throw new DomainError('VIDEO_NOT_FOUND', '视频不存在', false, 404);
       if (video.overallStatus !== 'DISCOVERED') throw new DomainError('INVALID_TRANSITION', '仅待处理的新发现视频可以开始处理', false, 409);
       await tx.video.update({ where: { id: videoId }, data: { overallStatus: 'WAITING', currentStage: 'FETCH' } });
       await tx.job.create({ data: { videoId, stage: 'FETCH', inputFingerprint: fingerprint({ videoId, start: true }) } });
@@ -103,7 +113,7 @@ export class MediaLibrary {
         return JSON.parse(prior.responseJson) as { id: string };
       }
       const video = await tx.video.findUnique({ where: { id: videoId } });
-      if (!video) throw new DomainError('VIDEO_NOT_FOUND', '视频不存在', false, 404);
+      if (!video || video.isDeleted) throw new DomainError('VIDEO_NOT_FOUND', '视频不存在', false, 404);
       if (video.sourceType === 'SIMULATION' || (input.stage === 'FETCH' && video.sourceType !== 'BILIBILI')) throw new DomainError('INVALID_TRANSITION', '此视频不支持该处理操作', false, 409);
       if (await tx.job.count({ where: { videoId, status: { in: ['RUNNING', 'QUEUED'] } } })) throw new DomainError('TASK_ACTIVE', '请等待当前处理结束后再重新处理', false, 409);
       const required = input.stage === 'EXTRACT_AUDIO' ? 'SOURCE_VIDEO' : input.stage === 'TRANSCRIBE' ? 'AUDIO' : null;
