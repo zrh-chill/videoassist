@@ -4,7 +4,7 @@ import type { MediaOutput } from './media.js';
 export const stages = ['FETCH', 'EXTRACT_AUDIO', 'TRANSCRIBE', 'SUMMARIZE'] as const;
 export const stageSchema = z.enum(stages);
 export type Stage = z.infer<typeof stageSchema>;
-export const statuses = ['WAITING', 'FETCHING', 'EXTRACTING_AUDIO', 'TRANSCRIBING', 'SUMMARIZING', 'COMPLETED', 'FAILED', 'CANCELED'] as const;
+export const statuses = ['DISCOVERED', 'WAITING', 'FETCHING', 'EXTRACTING_AUDIO', 'TRANSCRIBING', 'SUMMARIZING', 'COMPLETED', 'FAILED', 'CANCELED'] as const;
 export type VideoStatus = typeof statuses[number];
 export const createSimulationSchema = z.object({
   title: z.string().trim().min(1).max(200),
@@ -15,6 +15,7 @@ export const listQuerySchema = z.object({
   q: z.string().max(200).default(''),
   status: z.enum(statuses).optional(),
   sourceType: z.enum(['LOCAL', 'BILIBILI', 'SIMULATION']).optional(),
+  creatorId: z.string().uuid().optional(),
   cursor: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
