@@ -40,7 +40,7 @@ export function SettingsPage() {
   const dirty = Object.keys(draft).length > 0;
   const busy = save.isPending || test.isPending;
   return <>
-    <header className="topbar"><div><div className="eyebrow">WORKSPACE / SETTINGS</div><h1>系统设置</h1><p className="subtitle">管理媒体工具、模型连接与总结提示词。</p></div></header>
+    <header className="topbar"><div><div className="eyebrow">WORKSPACE / SETTINGS</div><h1>系统设置</h1></div></header>
     <div className="notice"><strong>配置优先级</strong><span>环境变量优先于页面设置；标有“环境变量”的项目需在服务端修改。密钥仅填写 env:变量名 或 file:文件路径。</span></div>
     <form onSubmit={event => { event.preventDefault(); save.mutate(); }}>
       <div className="settings-grid">{groups.map(group => <section className="panel" key={group.title}><h2>{group.title}</h2>
@@ -80,7 +80,7 @@ function PromptManager() {
   const values = draft || prompt;
   const mutation = useMutation({ mutationFn: () => api<{ id: string; revision: number }>('/prompt-versions', { name: values!.name, body: values!.body }),
     onSuccess: result => { setSelected(result.id); setDraft(null); setNotice('已启用提示词版本 ' + result.revision + '，已有总结保持原版本关联。'); void client.invalidateQueries({ queryKey: ['prompts'] }); } });
-  return <section className="panel prompt-panel"><h2>总结提示词</h2><p className="subtitle">保存会创建并启用不可变版本；相同正文会启用已有版本。新总结使用当前启用版本。</p>
+  return <section className="panel prompt-panel"><h2>总结提示词</h2>
     {(query.error || mutation.error) && <p className="error" role="alert">{(query.error || mutation.error)?.message}</p>}
     {values && <form onSubmit={event => { event.preventDefault(); mutation.mutate(); }}>
       <label className="setting-field">历史版本<select aria-label="提示词历史版本" value={prompt?.id || ''} disabled={mutation.isPending} onChange={event => { if (!draft || window.confirm('切换版本将放弃尚未保存的提示词修改，继续？')) { setSelected(event.target.value); setDraft(null); } }}>
