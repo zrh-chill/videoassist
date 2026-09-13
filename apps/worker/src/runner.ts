@@ -27,6 +27,7 @@ export class Worker {
     try {
       const result = await this.tasks.cached(job) ?? await this.handler.execute({
         videoId: job.videoId, title: job.video.title, stage: job.stage as Stage,
+        jobId: job.id, leaseOwner: owner, sourceType: job.video.sourceType,
         attempt: job.attempt, options: JSON.parse(job.video.optionsJson),
       }, operation.signal);
       // Shutdown leaves a leased job for crash recovery, rather than reporting a false failure.
