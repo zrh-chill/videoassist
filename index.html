@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>帧语 FrameNote · 视频转写工作台</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600;700;900&display=swap');
+
+    :root {
+      --ink: #171916;
+      --muted: #777b72;
+      --paper: #f0f0e9;
+      --card: #fafaf5;
+      --line: #d7d8cf;
+      --acid: #d9ff4f;
+      --green: #1b9a66;
+      --orange: #f47738;
+      --red: #d94b45;
+      --blue: #4078f2;
+      --sidebar: #1b1d1a;
+      --shadow: 0 18px 48px rgba(28, 31, 24, .09);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 1120px;
+      color: var(--ink);
+      background:
+        linear-gradient(rgba(30, 33, 27, .035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(30, 33, 27, .035) 1px, transparent 1px),
+        var(--paper);
+      background-size: 24px 24px;
+      font-family: "Noto Sans SC", sans-serif;
+      font-size: 14px;
+    }
+
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    .mono { font-family: "DM Mono", monospace; }
+    .app { min-height: 100vh; display: grid; grid-template-columns: 224px 1fr; }
+
+    .sidebar {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 10;
+      width: 224px;
+      padding: 24px 16px 18px;
+      color: #eef0e8;
+      background: var(--sidebar);
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #343730;
+    }
+    .brand { display: flex; gap: 11px; align-items: center; padding: 0 8px 28px; }
+    .brand-mark {
+      width: 35px; height: 35px; display: grid; place-items: center;
+      border-radius: 9px; color: #161814; background: var(--acid); font-weight: 900;
+      transform: rotate(-4deg);
+    }
+    .brand strong { display: block; font-size: 17px; letter-spacing: .06em; }
+    .brand small { color: #8f9489; font-size: 9px; letter-spacing: .16em; }
+    .nav-label { margin: 4px 10px 9px; color: #747a70; font-size: 10px; letter-spacing: .16em; }
+    .nav-item {
+      width: 100%; display: flex; align-items: center; gap: 11px; margin: 3px 0;
+      padding: 11px 12px; color: #aeb3a7; background: transparent; border: 0;
+      border-radius: 9px; text-align: left; transition: .18s ease;
+    }
+    .nav-item:hover { color: #fff; background: #282b26; }
+    .nav-item.active { color: #11130f; background: var(--acid); font-weight: 700; }
+    .nav-icon { width: 18px; text-align: center; font-size: 16px; }
+    .nav-badge { margin-left: auto; padding: 1px 6px; border-radius: 10px; background: #363a33; color: #c5c9bd; font: 10px "DM Mono"; }
+    .nav-item.active .nav-badge { background: rgba(0,0,0,.12); color: #111; }
+    .sidebar-foot { margin-top: auto; padding: 15px 8px 0; border-top: 1px solid #33362f; }
+    .system-ok { display: flex; align-items: center; gap: 8px; color: #9ea399; font-size: 11px; }
+    .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--acid); box-shadow: 0 0 0 4px rgba(217,255,79,.1); }
+    .storage { margin-top: 13px; color: #73796f; font: 10px "DM Mono"; }
+    .storage-bar { height: 3px; margin: 7px 0 5px; border-radius: 4px; background: #373a34; overflow: hidden; }
+    .storage-bar::after { content: ""; display: block; width: 42%; height: 100%; background: var(--acid); }
+
+    .main { grid-column: 2; min-height: 100vh; padding: 28px 32px 48px; }
+    .page { display: none; max-width: 1500px; margin: auto; animation: reveal .35s ease both; }
+    .page.active { display: block; }
+    @keyframes reveal { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .topbar { height: 52px; display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; }
+    h1 { margin: 0; font-size: 27px; line-height: 1.2; letter-spacing: -.04em; }
+    .subtitle { margin-top: 6px; color: var(--muted); font-size: 12px; }
+    .top-actions { display: flex; gap: 9px; }
+    .btn {
+      display: inline-flex; gap: 8px; align-items: center; justify-content: center; min-height: 38px;
+      padding: 0 15px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink);
+      background: var(--card); font-weight: 600; transition: .16s ease;
+    }
+    .btn:hover { transform: translateY(-1px); border-color: #afb2a7; box-shadow: 0 5px 16px rgba(0,0,0,.07); }
+    .btn.primary { border-color: var(--ink); background: var(--ink); color: #fff; }
+    .btn.acid { border-color: #b9dc32; background: var(--acid); color: #131510; }
+    .btn.danger { color: var(--red); }
+    .btn.small { min-height: 31px; padding: 0 10px; font-size: 12px; }
+
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+    .stat {
+      position: relative; min-height: 112px; padding: 17px 18px; border: 1px solid var(--line);
+      border-radius: 12px; background: rgba(250,250,245,.84); overflow: hidden;
+    }
+    .stat::before { content: ""; position: absolute; width: 65px; height: 65px; right: -21px; top: -23px; border: 1px solid var(--line); border-radius: 50%; }
+    .stat-label { color: var(--muted); font-size: 11px; }
+    .stat-value { margin-top: 7px; font: 500 30px/1 "DM Mono"; letter-spacing: -.06em; }
+    .stat-meta { margin-top: 10px; color: var(--muted); font-size: 10px; }
+    .stat-meta b { color: var(--green); }
+
+    .toolbar {
+      display: flex; align-items: center; gap: 9px; margin-bottom: 12px; padding: 10px;
+      border: 1px solid var(--line); border-radius: 11px; background: rgba(250,250,245,.72);
+    }
+    .search { position: relative; flex: 1; }
+    .search span { position: absolute; left: 12px; top: 9px; color: var(--muted); }
+    .field, select, textarea {
+      width: 100%; border: 1px solid var(--line); border-radius: 7px; outline: 0;
+      color: var(--ink); background: #fff; transition: .15s ease;
+    }
+    .field { height: 36px; padding: 0 12px; }
+    .search .field { padding-left: 36px; }
+    .field:focus, select:focus, textarea:focus { border-color: #777d6c; box-shadow: 0 0 0 3px rgba(217,255,79,.35); }
+    select { width: auto; min-width: 116px; height: 36px; padding: 0 30px 0 11px; }
+
+    .table-wrap { border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow: hidden; box-shadow: var(--shadow); }
+    table { width: 100%; border-collapse: collapse; }
+    th { padding: 12px 14px; color: #8a8f85; background: #f5f5ef; border-bottom: 1px solid var(--line); text-align: left; font-size: 10px; font-weight: 600; letter-spacing: .08em; }
+    td { padding: 14px; border-bottom: 1px solid #e5e6de; vertical-align: middle; }
+    tbody tr { transition: .15s ease; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: #f7f8ef; }
+    .video-cell { display: flex; align-items: center; gap: 12px; max-width: 420px; }
+    .thumb { position: relative; flex: 0 0 76px; width: 76px; height: 45px; border-radius: 6px; overflow: hidden; background: #2f332d; }
+    .thumb::after { content: "▶"; position: absolute; inset: 0; display: grid; place-items: center; color: rgba(255,255,255,.8); font-size: 12px; }
+    .t1 { background: linear-gradient(135deg,#18262f,#e0633f); }
+    .t2 { background: linear-gradient(135deg,#c9dcc7,#4b6f65); }
+    .t3 { background: linear-gradient(135deg,#2e313c,#66629a); }
+    .t4 { background: linear-gradient(135deg,#d9c79b,#9a663e); }
+    .video-title { margin-bottom: 4px; overflow: hidden; color: #252720; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+    .video-meta { color: var(--muted); font-size: 10px; }
+    .source { display: inline-flex; gap: 5px; align-items: center; }
+    .source-dot { width: 6px; height: 6px; border-radius: 50%; background: #fa5d75; }
+    .source-dot.local { background: #687078; }
+    .status { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .status.done { color: #17734f; background: #e4f4eb; }
+    .status.running { color: #476306; background: #efffc0; }
+    .status.failed { color: #a43b35; background: #fae7e5; }
+    .status.waiting { color: #646860; background: #eaece7; }
+    .spin { width: 9px; height: 9px; border: 1.5px solid rgba(0,0,0,.18); border-top-color: currentColor; border-radius: 50%; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .progress { width: 100px; height: 4px; margin-top: 6px; overflow: hidden; border-radius: 5px; background: #dfe3d5; }
+    .progress i { display: block; height: 100%; background: #89a624; }
+    .row-actions { display: flex; align-items: center; gap: 4px; }
+    .icon-btn { width: 30px; height: 30px; border: 0; border-radius: 6px; background: transparent; color: #686d63; }
+    .icon-btn:hover { background: #e8eae1; color: #151712; }
+    .pagination { display: flex; justify-content: space-between; align-items: center; padding: 14px 4px 0; color: var(--muted); font-size: 11px; }
+
+    .add-grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 18px; }
+    .panel { border: 1px solid var(--line); border-radius: 13px; background: var(--card); box-shadow: var(--shadow); }
+    .panel-head { padding: 17px 19px; border-bottom: 1px solid var(--line); }
+    .panel-head h2 { margin: 0; font-size: 15px; }
+    .panel-head p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
+    .panel-body { padding: 19px; }
+    .source-tabs { display: flex; gap: 4px; margin-bottom: 16px; padding: 4px; border-radius: 9px; background: #e9eae2; }
+    .source-tab { flex: 1; height: 34px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; font-weight: 600; }
+    .source-tab.active { color: var(--ink); background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+    .add-mode { display: none; }
+    .add-mode.active { display: block; }
+    .dropzone {
+      min-height: 245px; display: grid; place-items: center; padding: 25px; border: 1.5px dashed #b8bbb0;
+      border-radius: 11px; text-align: center; background: #f6f7f0; transition: .2s ease;
+    }
+    .dropzone:hover { border-color: #8ca11f; background: #f8ffe5; }
+    .upload-icon { width: 54px; height: 54px; margin: 0 auto 15px; display: grid; place-items: center; border-radius: 50%; background: var(--acid); font-size: 22px; }
+    .dropzone h3 { margin: 0 0 6px; font-size: 15px; }
+    .dropzone p { margin: 0 0 17px; color: var(--muted); font-size: 11px; }
+    .url-card { padding: 32px 22px; border-radius: 11px; background: #22241f; color: #fff; }
+    .url-card .field { height: 45px; margin: 18px 0 10px; border: 1px solid #42463d; color: #fff; background: #30332d; }
+    .url-card .field:focus { border-color: var(--acid); }
+    .url-example { color: #7e8477; font: 10px "DM Mono"; }
+    .url-card .btn { width: 100%; margin-top: 24px; }
+    .workflow { display: grid; gap: 0; }
+    .flow-step { position: relative; display: flex; gap: 13px; min-height: 71px; }
+    .flow-step:not(:last-child)::after { content: ""; position: absolute; left: 14px; top: 31px; bottom: 3px; border-left: 1px dashed #bdc0b5; }
+    .flow-no { position: relative; z-index: 1; flex: 0 0 29px; width: 29px; height: 29px; display: grid; place-items: center; border: 1px solid #bfc2b7; border-radius: 50%; background: var(--card); font: 10px "DM Mono"; }
+    .flow-step:first-child .flow-no { border-color: var(--ink); color: var(--acid); background: var(--ink); }
+    .flow-copy strong { display: block; padding-top: 2px; font-size: 12px; }
+    .flow-copy span { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+
+    .detail-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 15px; border: 0; color: var(--muted); background: transparent; }
+    .detail-back:hover { color: var(--ink); }
+    .detail-hero { display: grid; grid-template-columns: 170px 1fr auto; gap: 20px; align-items: center; padding: 19px; margin-bottom: 15px; border: 1px solid var(--line); border-radius: 13px; background: var(--card); }
+    .hero-thumb { height: 96px; border-radius: 8px; background: linear-gradient(135deg,#161d21,#d46848); display: grid; place-items: center; color: #fff; font-size: 25px; }
+    .detail-hero h2 { margin: 0 0 8px; max-width: 650px; font-size: 19px; }
+    .meta-line { display: flex; gap: 18px; color: var(--muted); font-size: 11px; }
+    .stages { display: flex; align-items: center; margin-top: 17px; }
+    .stage { display: flex; align-items: center; gap: 7px; color: var(--green); font-size: 10px; }
+    .stage i { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: var(--green); font-style: normal; font-size: 9px; }
+    .stage-line { width: 30px; height: 1px; margin: 0 7px; background: #a8cbbb; }
+    .duration-card { padding-left: 25px; border-left: 1px solid var(--line); text-align: right; }
+    .duration-card b { display: block; font: 500 23px "DM Mono"; }
+    .duration-card span { color: var(--muted); font-size: 10px; }
+    .detail-grid { display: grid; grid-template-columns: 1.35fr .65fr; gap: 15px; }
+    .content-tabs { display: flex; padding: 0 18px; border-bottom: 1px solid var(--line); }
+    .content-tab { padding: 15px 14px 12px; border: 0; border-bottom: 2px solid transparent; color: var(--muted); background: transparent; font-weight: 600; }
+    .content-tab.active { border-color: var(--ink); color: var(--ink); }
+    .tab-pane { display: none; min-height: 430px; padding: 22px; }
+    .tab-pane.active { display: block; }
+    .summary-lead { padding: 17px; margin-bottom: 20px; border-left: 4px solid var(--acid); background: #f0f3df; font-size: 14px; font-weight: 600; line-height: 1.75; }
+    .section-title { margin: 20px 0 12px; font-size: 12px; letter-spacing: .05em; }
+    .points { display: grid; gap: 8px; padding: 0; list-style: none; }
+    .points li { position: relative; padding: 10px 12px 10px 35px; border: 1px solid #e0e2d9; border-radius: 8px; background: #f8f9f3; line-height: 1.6; }
+    .points li::before { content: attr(data-n); position: absolute; left: 10px; top: 10px; color: #859418; font: 10px "DM Mono"; }
+    .tags { display: flex; gap: 7px; flex-wrap: wrap; }
+    .tag { padding: 5px 9px; border: 1px solid #cfd2c5; border-radius: 20px; color: #5e6457; background: #fff; font-size: 10px; }
+    .transcript { color: #3f433b; font-size: 13px; line-height: 2; }
+    .transcript p { margin: 0 0 15px; }
+    .timestamp { display: inline-block; width: 52px; color: #899120; font: 10px "DM Mono"; }
+    .side-card { margin-bottom: 15px; padding: 17px; border: 1px solid var(--line); border-radius: 11px; background: var(--card); }
+    .side-card h3 { margin: 0 0 15px; font-size: 12px; }
+    .info-row { display: flex; justify-content: space-between; gap: 15px; padding: 8px 0; border-bottom: 1px solid #e6e7df; font-size: 11px; }
+    .info-row:last-child { border-bottom: 0; }
+    .info-row span { color: var(--muted); }
+    .action-list { display: grid; gap: 7px; }
+    .action-list .btn { width: 100%; justify-content: flex-start; background: #f7f8f2; }
+
+    .creator-list { display: grid; gap: 10px; }
+    .creator-card { display: grid; grid-template-columns: auto 1fr auto auto; gap: 15px; align-items: center; padding: 15px 17px; border: 1px solid var(--line); border-radius: 11px; background: var(--card); }
+    .avatar { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: #343831; font-weight: 700; }
+    .creator-card h3 { margin: 0 0 4px; font-size: 13px; }
+    .creator-card p { margin: 0; color: var(--muted); font-size: 10px; }
+    .creator-stat { padding: 0 20px; border-left: 1px solid var(--line); text-align: center; }
+    .creator-stat b { display: block; font: 16px "DM Mono"; }
+    .creator-stat span { color: var(--muted); font-size: 9px; }
+
+    .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    .form-row { margin-bottom: 15px; }
+    .form-row label { display: block; margin-bottom: 7px; color: #4c5048; font-size: 11px; font-weight: 600; }
+    .form-row textarea { min-height: 130px; padding: 12px; resize: vertical; line-height: 1.6; }
+    .setting-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 15px; }
+
+    .modal-shell { position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; background: rgba(13,15,12,.62); backdrop-filter: blur(4px); }
+    .modal-shell.open { display: flex; }
+    .modal { width: 470px; border: 1px solid #4b5045; border-radius: 14px; background: var(--card); box-shadow: 0 30px 80px rgba(0,0,0,.35); animation: pop .22s ease; }
+    @keyframes pop { from { opacity: 0; transform: scale(.97) translateY(8px); } }
+    .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+    .modal-head h2 { margin: 0; font-size: 16px; }
+    .modal-close { border: 0; background: transparent; font-size: 19px; }
+    .modal-body { padding: 20px; }
+    .modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 0 20px 20px; }
+    .toast { position: fixed; right: 25px; bottom: 25px; z-index: 40; display: flex; gap: 10px; align-items: center; padding: 13px 17px; border-radius: 9px; color: #fff; background: #20231e; box-shadow: 0 12px 35px rgba(0,0,0,.22); opacity: 0; transform: translateY(15px); pointer-events: none; transition: .25s ease; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast-check { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; color: #18200d; background: var(--acid); font-size: 11px; }
+    .empty { display: none; padding: 55px; color: var(--muted); text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">帧</div><div><strong>帧语</strong><small>FRAMENOTE</small></div></div>
+      <div class="nav-label mono">WORKSPACE</div>
+      <button class="nav-item active" data-page="videos"><span class="nav-icon">▦</span>视频任务<span class="nav-badge">24</span></button>
+      <button class="nav-item" data-page="add"><span class="nav-icon">＋</span>添加视频</button>
+      <button class="nav-item" data-page="creators"><span class="nav-icon">◎</span>UP 主追踪<span class="nav-badge">3</span></button>
+      <div class="nav-label mono" style="margin-top:22px">SYSTEM</div>
+      <button class="nav-item" data-page="settings"><span class="nav-icon">⚙</span>系统设置</button>
+      <div class="sidebar-foot">
+        <div class="system-ok"><i class="pulse"></i>处理服务运行正常</div>
+        <div class="storage">STORAGE 21.4 / 50 GB<div class="storage-bar"></div>42% USED</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="page active" id="page-videos">
+        <header class="topbar"><div><h1>视频任务</h1><div class="subtitle">把冗长视频，变成可检索、可复用的知识。</div></div><div class="top-actions"><button class="btn" id="exportBtn">⇩ 导出 Excel</button><button class="btn primary" data-go="add">＋ 添加视频</button></div></header>
+        <div class="stats">
+          <div class="stat"><div class="stat-label">全部视频</div><div class="stat-value">24</div><div class="stat-meta"><b>↑ 6</b> 本周新增</div></div>
+          <div class="stat"><div class="stat-label">处理中</div><div class="stat-value">03</div><div class="stat-meta">1 个转写 · 2 个总结</div></div>
+          <div class="stat"><div class="stat-label">已完成</div><div class="stat-value">19</div><div class="stat-meta">累计节省约 <b>14.8h</b></div></div>
+          <div class="stat"><div class="stat-label">处理失败</div><div class="stat-value" style="color:var(--red)">02</div><div class="stat-meta">需要你的关注</div></div>
+        </div>
+        <div class="toolbar">
+          <div class="search"><span>⌕</span><input id="searchInput" class="field" placeholder="搜索视频标题或 UP 主..." /></div>
+          <select id="sourceFilter"><option value="all">全部来源</option><option value="bilibili">B 站视频</option><option value="local">本地视频</option></select>
+          <select id="statusFilter"><option value="all">全部状态</option><option value="done">已完成</option><option value="running">处理中</option><option value="failed">处理失败</option></select>
+          <button class="btn small" id="resetFilter">重置</button>
+        </div>
+        <div class="table-wrap">
+          <table><thead><tr><th>视频</th><th>来源</th><th>当前状态</th><th>创建时间</th><th>耗时</th><th></th></tr></thead>
+          <tbody id="videoRows">
+            <tr data-source="bilibili" data-status="done"><td><div class="video-cell"><div class="thumb t1"></div><div><div class="video-title">AI Agent 的下一站：从工具调用到自主协作</div><div class="video-meta">科技前线局 · 32:16</div></div></div></td><td><span class="source"><i class="source-dot"></i>B 站</span></td><td><span class="status done">✓ 已完成</span></td><td class="mono">09-13 09:42</td><td class="mono">04:21</td><td><div class="row-actions"><button class="icon-btn open-detail" title="查看详情">↗</button><button class="icon-btn" title="更多">•••</button></div></td></tr>
+            <tr data-source="local" data-status="running"><td><div class="video-cell"><div class="thumb t2"></div><div><div class="video-title">产品周会_20260912.mp4</div><div class="video-meta">本地文件 · 58:03</div></div></div></td><td><span class="source"><i class="source-dot local"></i>本地</span></td><td><span class="status running"><i class="spin"></i>转写中 · 68%</span><div class="progress"><i style="width:68%"></i></div></td><td class="mono">09-13 09:18</td><td class="mono">02:47</td><td><div class="row-actions"><button class="icon-btn open-detail">↗</button><button class="icon-btn">•••</button></div></td></tr>
+            <tr data-source="bilibili" data-status="failed"><td><div class="video-cell"><div class="thumb t3"></div><div><div class="video-title">为什么你的大模型应用总在 Demo 阶段？</div><div class="video-meta">码农参上 · 18:44</div></div></div></td><td><span class="source"><i class="source-dot"></i>B 站</span></td><td><span class="status failed">! 转写失败</span></td><td class="mono">09-12 22:16</td><td class="mono">01:08</td><td><div class="row-actions"><button class="btn small danger retry-btn">↻ 重试</button><button class="icon-btn open-detail">↗</button></div></td></tr>
+            <tr data-source="bilibili" data-status="done"><td><div class="video-cell"><div class="thumb t4"></div><div><div class="video-title">独立开发者的一人公司：我的年度复盘</div><div class="video-meta">阿杰独立开发 · 46:21</div></div></div></td><td><span class="source"><i class="source-dot"></i>B 站</span></td><td><span class="status done">✓ 已完成</span></td><td class="mono">09-12 18:30</td><td class="mono">05:02</td><td><div class="row-actions"><button class="icon-btn open-detail">↗</button><button class="icon-btn">•••</button></div></td></tr>
+          </tbody></table><div class="empty" id="emptyState">没有找到匹配的视频任务</div>
+        </div>
+        <div class="pagination"><span>显示 1–4，共 24 条</span><span><button class="btn small" disabled>←</button> <button class="btn small">下一页 →</button></span></div>
+      </section>
+
+      <section class="page" id="page-add">
+        <header class="topbar"><div><h1>添加视频</h1><div class="subtitle">上传本地文件，或粘贴 B 站视频链接。</div></div></header>
+        <div class="add-grid">
+          <div class="panel"><div class="panel-head"><h2>创建处理任务</h2><p>提交后将自动完成音频提取、全文转写和 AI 总结</p></div><div class="panel-body">
+            <div class="source-tabs"><button class="source-tab active" data-mode="local">本地视频</button><button class="source-tab" data-mode="url">B 站链接</button></div>
+            <div class="add-mode active" id="mode-local"><div class="dropzone" id="dropzone"><div><div class="upload-icon">⇧</div><h3>拖入视频文件</h3><p>支持 MP4、MOV、MKV，单个文件最大 5 GB</p><button class="btn">选择本地文件</button></div></div></div>
+            <div class="add-mode" id="mode-url"><div class="url-card"><h3>粘贴 B 站视频链接</h3><div style="color:#aeb3a7;font-size:11px">系统将自动解析标题、UP 主、封面和视频时长</div><input class="field" id="biliUrl" placeholder="https://www.bilibili.com/video/BV..."/><div class="url-example">支持 bilibili.com 与 b23.tv 短链接</div><button class="btn acid" id="parseBtn">解析并创建任务 →</button></div></div>
+          </div></div>
+          <div class="panel"><div class="panel-head"><h2>处理流程</h2><p>当前默认配置 · 全程自动执行</p></div><div class="panel-body workflow">
+            <div class="flow-step"><div class="flow-no">01</div><div class="flow-copy"><strong>获取视频</strong><span>读取本地文件或下载 B 站视频</span></div></div>
+            <div class="flow-step"><div class="flow-no">02</div><div class="flow-copy"><strong>提取音频</strong><span>FFmpeg · WAV 16kHz 单声道</span></div></div>
+            <div class="flow-step"><div class="flow-no">03</div><div class="flow-copy"><strong>全文转写</strong><span>Whisper large-v3 · 自动识别语言</span></div></div>
+            <div class="flow-step"><div class="flow-no">04</div><div class="flow-copy"><strong>结构化总结</strong><span>一句话摘要、核心要点、详细总结、关键词</span></div></div>
+            <div class="flow-step"><div class="flow-no">05</div><div class="flow-copy"><strong>保存结果</strong><span>结果入库，可随时查看或导出</span></div></div>
+          </div></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-detail">
+        <button class="detail-back" data-go="videos">← 返回视频任务</button>
+        <div class="detail-hero"><div class="hero-thumb">▶</div><div><h2>AI Agent 的下一站：从工具调用到自主协作</h2><div class="meta-line"><span>UP 主 · 科技前线局</span><span>BV1aG411Q7xx</span><span>2026-09-12 发布</span></div><div class="stages"><span class="stage"><i>✓</i>获取视频</span><i class="stage-line"></i><span class="stage"><i>✓</i>提取音频</span><i class="stage-line"></i><span class="stage"><i>✓</i>全文转写</span><i class="stage-line"></i><span class="stage"><i>✓</i>AI 总结</span></div></div><div class="duration-card"><b>04:21</b><span>总处理耗时</span></div></div>
+        <div class="detail-grid">
+          <div class="panel"><div class="content-tabs"><button class="content-tab active" data-tab="summary">AI 总结</button><button class="content-tab" data-tab="transcript">完整文稿</button><button class="content-tab" data-tab="logs">处理日志</button></div>
+            <div class="tab-pane active" id="tab-summary"><div style="display:flex;justify-content:flex-end"><button class="btn small copy-btn" data-copy="summary">复制总结</button></div><div class="summary-lead">AI Agent 正从“被动调用工具”迈向“主动拆解目标、协同执行并自我校验”的新阶段，未来竞争力将取决于可靠性而非单纯的模型能力。</div><h3 class="section-title">核心要点</h3><ul class="points"><li data-n="01">Agent 的关键变化不是模型变大，而是具备了任务规划、记忆管理和工具协同能力。</li><li data-n="02">多 Agent 协作能够拆分复杂任务，但也带来了通信成本与错误放大的新问题。</li><li data-n="03">生产环境的核心指标应从“回答是否聪明”转为“任务是否稳定完成且过程可追踪”。</li><li data-n="04">人仍需处于关键决策回路中，审批节点与失败恢复机制不可缺少。</li></ul><h3 class="section-title">关键词</h3><div class="tags"><span class="tag">AI Agent</span><span class="tag">工具调用</span><span class="tag">多智能体协作</span><span class="tag">可靠性</span><span class="tag">Human-in-the-loop</span></div></div>
+            <div class="tab-pane" id="tab-transcript"><div style="display:flex;justify-content:flex-end"><button class="btn small copy-btn" data-copy="transcript">复制文稿</button></div><div class="transcript"><p><span class="timestamp">00:00</span>大家好，今天我们来聊一个最近很热门、但也很容易被说得过于玄乎的话题：AI Agent 到底走到哪一步了。</p><p><span class="timestamp">00:18</span>如果把去年的 Agent 看作是会调用几个工具的聊天机器人，那么今年真正发生变化的，是它开始能够围绕一个目标持续工作。</p><p><span class="timestamp">01:04</span>一个成熟的 Agent 系统通常包含规划、执行、记忆和校验四个环节。模型能力只是底座，真正决定体验的是整个循环能否可靠闭合。</p><p><span class="timestamp">02:31</span>多 Agent 并不是角色越多越好。每增加一个协作者，都会增加上下文同步、状态一致性和错误定位的成本。</p><p><span class="timestamp">04:06</span>所以未来一年，行业的重点可能不再是展示一个惊艳 Demo，而是把成功率从百分之七十提高到百分之九十九。</p></div></div>
+            <div class="tab-pane" id="tab-logs"><ul class="points"><li data-n="09:42">视频下载完成 · 412.8 MB · 00:46</li><li data-n="09:43">音频提取完成 · WAV 16kHz · 00:19</li><li data-n="09:44">全文转写完成 · Whisper large-v3 · 02:38</li><li data-n="09:47">结构化总结完成 · GPT-5 · 00:38</li></ul></div>
+          </div>
+          <aside><div class="side-card"><h3>视频信息</h3><div class="info-row"><span>来源</span><b>B 站视频</b></div><div class="info-row"><span>视频时长</span><b class="mono">32:16</b></div><div class="info-row"><span>文稿字数</span><b class="mono">8,420</b></div><div class="info-row"><span>识别语言</span><b>中文</b></div><div class="info-row"><span>总结模型</span><b>GPT-5</b></div></div>
+            <div class="side-card"><h3>重新处理</h3><div class="action-list"><button class="btn small action-toast">↻ 重新下载视频</button><button class="btn small action-toast">♬ 重新提取音频</button><button class="btn small action-toast">▤ 重新生成文稿</button><button class="btn small action-toast">✦ 重新生成总结</button></div></div></aside>
+        </div>
+      </section>
+
+      <section class="page" id="page-creators">
+        <header class="topbar"><div><h1>UP 主追踪</h1><div class="subtitle">手动检查关注的创作者，自动发现并处理新视频。</div></div><div class="top-actions"><button class="btn" id="checkAllBtn">↻ 全部检查</button><button class="btn primary" id="addCreatorBtn">＋ 添加 UP 主</button></div></header>
+        <div class="creator-list">
+          <div class="creator-card"><div class="avatar">科</div><div><h3>科技前线局</h3><p>UID 38294102 · 上次检查 09-13 08:30 · 自动处理已开启</p></div><div class="creator-stat"><b>128</b><span>视频</span></div><button class="btn small check-btn">立即检查</button></div>
+          <div class="creator-card"><div class="avatar" style="background:#57517f">码</div><div><h3>码农参上</h3><p>UID 9981204 · 上次检查 09-12 22:10 · 手动处理</p></div><div class="creator-stat"><b>05</b><span>最新获取</span></div><button class="btn small check-btn">立即检查</button></div>
+          <div class="creator-card"><div class="avatar" style="background:#9a663e">杰</div><div><h3>阿杰独立开发</h3><p>UID 6712903 · 上次检查 09-12 18:22 · 自动处理已开启</p></div><div class="creator-stat"><b>01</b><span>本周新增</span></div><button class="btn small check-btn">立即检查</button></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-settings">
+        <header class="topbar"><div><h1>系统设置</h1><div class="subtitle">模型、存储与总结策略配置。密钥仅显示引用状态。</div></div></header>
+        <div class="settings-grid">
+          <div class="panel"><div class="panel-head"><h2>转写与总结模型</h2><p>配置服务地址和默认模型</p></div><div class="panel-body"><div class="form-row"><label>S2T 模型</label><input class="field" value="whisper-large-v3" /></div><div class="form-row"><label>S2T 接口地址</label><input class="field" value="http://localhost:8000/v1/audio/transcriptions" /></div><div class="form-row"><label>语言模型</label><input class="field" value="gpt-5" /></div><div class="form-row"><label>API 密钥</label><input class="field" type="password" value="not-a-real-secret" /></div><button class="btn small action-toast">测试连接</button></div></div>
+          <div class="panel"><div class="panel-head"><h2>总结提示词</h2><p>当前版本 v3 · 修改后可重新生成已有总结</p></div><div class="panel-body"><div class="form-row"><label>系统提示词</label><textarea>你是一名专业的视频内容分析师。请根据完整文稿生成结构化总结，包括：一句话摘要、核心要点、详细总结和关键词。保留关键事实与数字，不要添加文稿中没有的信息。</textarea></div><div class="form-row"><label>长文稿切片长度</label><input class="field" value="12,000 tokens" /></div></div></div>
+          <div class="panel" style="grid-column:1/-1"><div class="panel-head"><h2>文件与下载</h2><p>本地存储目录与 B 站视频保留策略</p></div><div class="panel-body" style="display:grid;grid-template-columns:1fr 1fr;gap:15px"><div class="form-row"><label>FFmpeg 路径</label><input class="field" value="C:\tools\ffmpeg\bin\ffmpeg.exe" /></div><div class="form-row"><label>结果保存目录</label><input class="field" value="D:\FrameNote\results" /></div></div></div>
+        </div><div class="setting-foot"><button class="btn">恢复默认</button><button class="btn primary" id="saveSettings">保存设置</button></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-shell" id="creatorModal"><div class="modal"><div class="modal-head"><h2>添加 UP 主</h2><button class="modal-close">×</button></div><div class="modal-body"><div class="form-row"><label>主页链接或 UID</label><input class="field" placeholder="https://space.bilibili.com/123456" /></div><div class="form-row"><label>每次获取最新视频数</label><select style="width:100%"><option>5 条</option><option>10 条</option><option>20 条</option></select></div><label style="display:flex;gap:8px;align-items:center;font-size:12px"><input type="checkbox" checked />发现新视频后自动处理</label></div><div class="modal-foot"><button class="btn modal-close-btn">取消</button><button class="btn primary" id="confirmCreator">添加并检查</button></div></div></div>
+  <div class="toast" id="toast"><span class="toast-check">✓</span><span id="toastText">操作已完成</span></div>
+
+  <script>
+    const pages = document.querySelectorAll('.page');
+    const navItems = document.querySelectorAll('.nav-item');
+    function showPage(name) {
+      pages.forEach(p => p.classList.toggle('active', p.id === `page-${name}`));
+      navItems.forEach(n => n.classList.toggle('active', n.dataset.page === name || (name === 'detail' && n.dataset.page === 'videos')));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    navItems.forEach(n => n.addEventListener('click', () => showPage(n.dataset.page)));
+    document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => showPage(b.dataset.go)));
+    document.querySelectorAll('.open-detail').forEach(b => b.addEventListener('click', () => showPage('detail')));
+
+    document.querySelectorAll('.source-tab').forEach(tab => tab.addEventListener('click', () => {
+      document.querySelectorAll('.source-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.add-mode').forEach(m => m.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(`mode-${tab.dataset.mode}`).classList.add('active');
+    }));
+
+    document.querySelectorAll('.content-tab').forEach(tab => tab.addEventListener('click', () => {
+      document.querySelectorAll('.content-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+    }));
+
+    const searchInput = document.getElementById('searchInput');
+    const sourceFilter = document.getElementById('sourceFilter');
+    const statusFilter = document.getElementById('statusFilter');
+    function filterRows() {
+      const q = searchInput.value.trim().toLowerCase();
+      let visible = 0;
+      document.querySelectorAll('#videoRows tr').forEach(row => {
+        const matched = row.textContent.toLowerCase().includes(q) &&
+          (sourceFilter.value === 'all' || row.dataset.source === sourceFilter.value) &&
+          (statusFilter.value === 'all' || row.dataset.status === statusFilter.value);
+        row.style.display = matched ? '' : 'none';
+        if (matched) visible++;
+      });
+      document.getElementById('emptyState').style.display = visible ? 'none' : 'block';
+    }
+    [searchInput, sourceFilter, statusFilter].forEach(el => el.addEventListener('input', filterRows));
+    document.getElementById('resetFilter').addEventListener('click', () => { searchInput.value=''; sourceFilter.value='all'; statusFilter.value='all'; filterRows(); });
+
+    let toastTimer;
+    function toast(message) {
+      clearTimeout(toastTimer);
+      document.getElementById('toastText').textContent = message;
+      document.getElementById('toast').classList.add('show');
+      toastTimer = setTimeout(() => document.getElementById('toast').classList.remove('show'), 2300);
+    }
+    document.getElementById('exportBtn').addEventListener('click', () => toast('已开始导出当前筛选结果'));
+    document.getElementById('saveSettings').addEventListener('click', () => toast('系统设置已保存'));
+    document.querySelectorAll('.action-toast').forEach(b => b.addEventListener('click', () => toast(`${b.textContent.trim()}任务已创建`)));
+    document.querySelectorAll('.check-btn').forEach(b => b.addEventListener('click', () => { b.textContent='检查中...'; setTimeout(()=>{b.textContent='立即检查'; toast('检查完成，没有发现新视频');}, 900); }));
+    document.getElementById('checkAllBtn').addEventListener('click', () => toast('正在检查 3 位 UP 主的最新视频'));
+    document.querySelectorAll('.retry-btn').forEach(b => b.addEventListener('click', () => { const cell=b.closest('tr').querySelector('td:nth-child(3)'); cell.innerHTML='<span class="status running"><i class="spin"></i>等待重试</span>'; b.remove(); toast('已从失败阶段重新创建任务'); }));
+    document.getElementById('parseBtn').addEventListener('click', () => {
+      const input = document.getElementById('biliUrl');
+      if (!input.value.trim()) { input.focus(); toast('请先粘贴 B 站视频链接'); return; }
+      toast('解析成功，处理任务已创建'); setTimeout(() => showPage('videos'), 700);
+    });
+    document.getElementById('dropzone').addEventListener('click', () => toast('Demo 模式：已模拟选择视频文件'));
+    document.querySelectorAll('.copy-btn').forEach(b => b.addEventListener('click', () => toast(b.dataset.copy === 'summary' ? '总结已复制' : '完整文稿已复制')));
+
+    const modal = document.getElementById('creatorModal');
+    document.getElementById('addCreatorBtn').addEventListener('click', () => modal.classList.add('open'));
+    document.querySelectorAll('.modal-close,.modal-close-btn').forEach(b => b.addEventListener('click', () => modal.classList.remove('open')));
+    modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('open'); });
+    document.getElementById('confirmCreator').addEventListener('click', () => { modal.classList.remove('open'); toast('UP 主已添加，正在检查最新视频'); });
+  </script>
+</body>
+</html>
