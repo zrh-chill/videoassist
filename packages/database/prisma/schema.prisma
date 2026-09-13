@@ -15,6 +15,9 @@ model Video {
   sourceHash String?
   durationMs Int?
   creatorName String?
+  creatorUid String?
+  isDeleted Boolean @default(false)
+  deletedAt DateTime?
   creatorId String?
   creator Creator? @relation(fields: [creatorId], references: [id], onDelete: SetNull)
   publishedAt DateTime?
@@ -36,6 +39,7 @@ model Video {
   @@unique([sourceType, bvid])
   @@index([overallStatus, createdAt])
   @@index([createdAt, id])
+  @@index([creatorUid, isDeleted])
 }
 model Job {
   id String @id @default(uuid())
