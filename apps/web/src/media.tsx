@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
 import type { TranscriptDto, SummaryDto, StructuredSummary } from '../../../packages/contracts/src/media';
@@ -60,12 +62,15 @@ function VersionSelect({ label, value, versions, onChange }: { label: string; va
     <option value="">当前版本</option>{versions.map(version => <option key={version.id} value={version.revision}>版本 {version.revision}{version.isCurrent ? ' · 当前' : ''}</option>)}
   </select>;
 }
+function SummaryMarkdown({ children }: { children: string }) {
+  return <Markdown remarkPlugins={[remarkGfm]} skipHtml components={{
+    a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
+    table: ({ children }) => <div className="markdown-table"><table>{children}</table></div>,
+  }}>{children}</Markdown>;
+}
 function SummaryContent({ data }: { data: StructuredSummary }) {
-  return <div className="summary-content"><p className="summary-lead">{data.one_sentence}</p><h3>核心要点</h3><ul>{data.key_points.map((point, index) => <li key={index}>{point}</li>)}</ul>
-    {data.detailed_summary.split(/(?=^### )/m).map((section, index) => {
-      const [heading, ...body] = section.split('\n');
-      return <section key={index}>{heading?.startsWith('### ') ? <><h3>{heading.slice(4)}</h3><p>{body.join('\n').trim()}</p></> : <p>{section}</p>}</section>;
-    })}<div className="keywords">{data.keywords.map(word => <span key={word}>{word}</span>)}</div></div>;
+  return <div className="summary-content markdown-body"><div className="summary-lead"><SummaryMarkdown>{data.one_sentence}</SummaryMarkdown></div><h3>核心要点</h3><ul>{data.key_points.map((point, index) => <li key={index}><SummaryMarkdown>{point}</SummaryMarkdown></li>)}</ul>
+    <SummaryMarkdown>{data.detailed_summary}</SummaryMarkdown><div className="keywords">{data.keywords.map(word => <span key={word}>{word}</span>)}</div></div>;
 }
 const stamp = (ms: number) => Math.floor(ms / 60000).toString().padStart(2, '0') + ':' + Math.floor(ms % 60000 / 1000).toString().padStart(2, '0');
 export function MediaResults({ id, active }: { id: string; active: boolean }) {
