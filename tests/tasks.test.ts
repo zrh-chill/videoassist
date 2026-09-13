@@ -237,3 +237,25 @@ test('SSE 重连仅重放游标后的事件并关闭连接', async () => {
     await reader.cancel();
   } finally { clearTimeout(timeout); controller.abort(); await app.close(); }
 });
+
+
+test('列表展示真实元数据且只读取当前摘要，旧版本和损坏内容不泄漏', async () => {
+  const { id } = await create();
+  const publishedAt = new Date('2026-04-26T00:00:00Z');
+  await db.video.update({ where: { id }, data: { coverUrl: 'https://i1.hdslb.com/cover.jpg', durationMs: 791530, creatorName: '作者', publishedAt } });
+  const transcript = await db.transcript.create({ data: { videoId: id, revision: 1, fullText: '正文', language: 'zh', provider: 'test', model: 'test', durationMs: 791530, timestampPrecision: 'CHUNK' } });
+  const prompt = await db.promptVersion.create({ data: { revision: 1, body: '提示词', hash: 'list-preview' } });
+  const base = { videoId: id, transcriptId: transcript.id, promptVersionId: prompt.id, provider: 'test', model: 'test', renderedText: '全文不应出现在列表', durationMs: 1, chunkCount: 1 };
+  await db.summary.create({ data: { ...base, revision: 1, isCurrent: false, structuredJson: JSON.stringify({ one_sentence: '旧摘要' }) } });
+  const current = await db.summary.create({ data: { ...base, revision: 2, structuredJson: JSON.stringify({ one_sentence: '当前一句话' }) } });
+  const list = () => tasks.list({ q: '', limit: 10 });
+  const row = (await list()).items[0]!;
+  assert.equal(row.oneSentence, '当前一句话');
+  assert.equal(row.creatorName, '作者'); assert.equal(row.durationMs, 791530);
+  assert.equal(row.coverUrl, 'https://i1.hdslb.com/cover.jpg'); assert.deepEqual(row.publishedAt, publishedAt);
+  assert.equal('summaries' in row, false); assert.equal('renderedText' in row, false);
+  await db.summary.update({ where: { id: current.id }, data: { structuredJson: '{broken' } });
+  assert.equal((await list()).items[0]!.oneSentence, null);
+  await db.summary.update({ where: { id: current.id }, data: { isCurrent: false } });
+  assert.equal((await list()).items[0]!.oneSentence, null);
+});
