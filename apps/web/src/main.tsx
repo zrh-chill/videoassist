@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { VideoDto, VideoPage, VideoDetail, RunDto } from '../../../packages/contracts/src/index';
 import { stages, statuses } from '../../../packages/contracts/src/index';
@@ -21,6 +21,21 @@ function Status({ status }: { status: string }) {
 function ErrorNotice({ error }: { error: Error | null }) {
   return error ? <p className="error" role="alert">{error.message}</p> : null;
 }
+function PageRoutes() {
+  const location = useLocation();
+  const [shownLocation, setShownLocation] = useState(location);
+  const leaving = location.pathname !== shownLocation.pathname;
+  useEffect(() => {
+    if (!leaving) return;
+    const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 140;
+    const timer = window.setTimeout(() => setShownLocation(location), duration);
+    return () => window.clearTimeout(timer);
+  }, [location, leaving]);
+  // Keep the outgoing route mounted during its fade; filters and SSE never restart it.
+  return <div key={shownLocation.pathname} className={'page-transition ' + (leaving ? 'page-leaving' : 'page-entering')} inert={leaving}>
+    <Routes location={leaving ? shownLocation : location}><Route path="/" element={<VideoList/>}/><Route path="/videos/:id" element={<Detail/>}/><Route path="*" element={<p>页面不存在，<Link to="/">返回任务列表</Link></p>}/></Routes>
+  </div>;
+}
 function Layout() {
   const connected = useEvents();
   return <div className="app">
@@ -30,7 +45,7 @@ function Layout() {
       <Link to="/" className="nav-item active"><span>▤</span> 视频任务</Link>
       <div className="sidebar-foot"><span className={'dot ' + (connected ? 'live' : '')}/>{connected ? '实时更新已连接' : '每 10 秒同步状态'}<p>第一阶段 · 持久任务验证</p></div>
     </aside>
-    <main className="main"><Routes><Route path="/" element={<VideoList/>}/><Route path="/videos/:id" element={<Detail/>}/><Route path="*" element={<p>页面不存在，<Link to="/">返回任务列表</Link></p>}/></Routes></main>
+    <main className="main"><PageRoutes/></main>
   </div>;
 }
 function VideoList() {
