@@ -16,11 +16,11 @@ export function normalizeCreator(input: string) {
   return { uid, url: 'https://space.bilibili.com/' + uid + '/upload/video' };
 }
 export interface CreatorVideos { name: string; videos: Array<{ bvid: string; title: string; url: string }> }
-export async function fetchCreatorVideos(uid: string, limit: number, config: AppConfig, signal: AbortSignal): Promise<CreatorVideos> {
+export async function fetchCreatorVideos(uid: string, limit: number, config: AppConfig, signal: AbortSignal, providers = { runTool, bilibiliMetadata }): Promise<CreatorVideos> {
   const source = normalizeCreator(uid);
   const bounded = AbortSignal.any([signal, AbortSignal.timeout(180000)]);
   try {
-    const output = await runTool(config.ytdlp, ['--ignore-config', '--flat-playlist', '--dump-single-json', '--playlist-end', String(limit),
+    const output = await providers.runTool(config.ytdlp, ['--ignore-config', '--flat-playlist', '--dump-single-json', '--playlist-end', String(limit),
       '--socket-timeout', '20', '--retries', '1', '--no-warnings',
       ...(config.cookieFile ? ['--cookies', path.resolve(config.cookieFile)] : []), '--', source.url],
     { signal: bounded, timeoutMs: 90000, maxOutputBytes: 2 * 1024 ** 2 });
@@ -35,7 +35,7 @@ export async function fetchCreatorVideos(uid: string, limit: number, config: App
     const unique = [...new Map(videos.map(v => [v.bvid, v])).values()];
     // yt-dlp flat space entries may contain only a BVID, not title/uploader.
     for (const video of unique) if (video.title === video.bvid || !name) {
-      const metadata = await bilibiliMetadata(video.url, config, bounded);
+      const metadata = await providers.bilibiliMetadata(video.url, config, bounded);
       video.title = metadata.title; name ||= metadata.creatorName;
     }
     return { name: (name || data.title || uid).slice(0, 200), videos: unique };
