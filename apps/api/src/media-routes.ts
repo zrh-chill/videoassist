@@ -7,7 +7,7 @@ import { Tasks } from '../../../packages/database/src/tasks.js';
 import { receiveUpload, moveIntoStorage } from '../../../packages/storage/src/media.js';
 import { resolveStorageKey } from '../../../packages/storage/src/index.js';
 import { probeMedia } from '../../../packages/integrations/src/ffmpeg.js';
-import { normalizeBilibiliUrl } from '../../../packages/integrations/src/bilibili.js';
+import { resolveBilibiliUrl } from '../../../packages/integrations/src/bilibili-links.js';
 import { DomainError } from '../../../packages/domain/src/index.js';
 import { z } from 'zod';
 import path from 'node:path';
@@ -23,8 +23,9 @@ export function mediaRoutes(app: FastifyInstance, db: Database, config: AppConfi
   const idOf = (params: unknown) => z.object({ id: z.string().uuid() }).parse(params).id;
   app.post(prefix + '/bilibili', async (request, reply) => {
     const body = z.object({ url: z.string().max(2048) }).strict().parse(request.body);
-    const normalized = normalizeBilibiliUrl(body.url);
-    const result = await media.importVideo({ sourceType: 'BILIBILI', title: normalized.bvid, bvid: normalized.bvid, originalUrl: normalized.url }, requestKey(request.headers['idempotency-key']));
+    const key = requestKey(request.headers['idempotency-key']);
+    const normalized = await resolveBilibiliUrl(body.url);
+    const result = await media.importVideo({ sourceType: 'BILIBILI', title: normalized.bvid, bvid: normalized.bvid, originalUrl: normalized.url }, key);
     return reply.code(result.duplicate ? 200 : 201).send(result);
   });
   app.post(prefix + '/uploads', async (request, reply) => {
@@ -72,4 +73,8 @@ export function mediaRoutes(app: FastifyInstance, db: Database, config: AppConfi
     return { current, versions };
   });
   app.post(prefix + '/:id/actions/regenerate-summary', async request => media.regenerateSummary(idOf(request.params), requestKey(request.headers['idempotency-key'])));
+  app.post(prefix + '/:id/actions/reprocess', async request => {
+    const input = z.object({ stage: z.enum(['FETCH', 'EXTRACT_AUDIO', 'TRANSCRIBE', 'SUMMARIZE']), force: z.literal(true), reason: z.string().trim().min(1).max(500) }).strict().parse(request.body);
+    return media.reprocess(idOf(request.params), input, requestKey(request.headers['idempotency-key']));
+  });
 }
