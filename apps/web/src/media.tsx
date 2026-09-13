@@ -2,65 +2,15 @@ import React, { useState } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Select } from './select';
 import { api } from './api';
 import type { TranscriptDto, SummaryDto, StructuredSummary } from '../../../packages/contracts/src/media';
 
 export const sourceName: Record<string, string> = { LOCAL: '本地视频', BILIBILI: 'B 站', SIMULATION: '模拟任务' };
-export function AddVideoForm({ onDone, maxBytes }: { onDone: (id: string) => void; maxBytes: number }) {
-  const [mode, setMode] = useState<'bilibili' | 'local'>('local');
-  const [progress, setProgress] = useState(0);
-  const [file, setFile] = useState<File | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const mutation = useMutation({ mutationFn: async (form: HTMLFormElement) => {
-    const data = new FormData(form);
-    if (mode === 'bilibili') return api<{ id: string }>('/videos/bilibili', { url: data.get('url') });
-    if (!file?.size) throw new Error('请选择视频文件');
-    if (file.size > maxBytes) throw new Error('文件超过上传容量限制');
-    return new Promise<{ id: string }>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/v1/videos/uploads');
-      xhr.setRequestHeader('Idempotency-Key', crypto.randomUUID());
-      xhr.upload.onprogress = event => { if (event.lengthComputable) setProgress(Math.round(event.loaded / event.total * 100)); };
-      xhr.onerror = () => reject(new Error('上传连接失败，请检查网络后重试'));
-      xhr.onload = () => {
-        try {
-          const result = JSON.parse(xhr.responseText);
-          xhr.status < 300 ? resolve(result) : reject(new Error(result.error?.message || '上传失败'));
-        } catch { reject(new Error('上传响应异常')); }
-      };
-      const upload = new FormData(); upload.set('file', file); xhr.send(upload);
-    });
-  }, onSuccess: data => onDone(data.id) });
-  const pendingLabel = mode === 'local' ? (progress < 100 ? '正在上传 ' + progress + '%' : '上传完成，正在校验…') : '正在创建任务…';
-  return <div className="add-grid"><section className="panel add-panel">
-    <div className="panel-head"><h2>创建处理任务</h2></div>
-    <div className="panel-body"><div className="source-tabs" aria-label="视频来源">
-      <button type="button" aria-pressed={mode === 'local'} className={'source-tab' + (mode === 'local' ? ' active' : '')} disabled={mutation.isPending} onClick={() => { setMode('local'); mutation.reset(); }}>本地视频</button>
-      <button type="button" aria-pressed={mode === 'bilibili'} className={'source-tab' + (mode === 'bilibili' ? ' active' : '')} disabled={mutation.isPending} onClick={() => { setMode('bilibili'); mutation.reset(); }}>B 站链接</button></div>
-    <form className="media-import" onSubmit={event => { event.preventDefault(); setProgress(0); mutation.mutate(event.currentTarget); }}>
-      <div key={mode} className="add-mode">{mode === 'bilibili' ? <div className="url-card"><h3>粘贴 B 站视频链接</h3>
-        <label><span className="sr-only">B 站视频链接</span><input className="field" name="url" type="url" required placeholder="https://www.bilibili.com/video/BV…/" disabled={mutation.isPending}/></label><div className="url-example">支持 bilibili.com 与 b23.tv 短链接<br/>仅处理第一分 P；重复链接会打开已有任务。</div>
-        <button className="btn acid" disabled={mutation.isPending}>{mutation.isPending ? pendingLabel : '解析并创建任务 →'}</button></div>
-        : <><div className={'dropzone' + (dragging ? ' dragging' : '')} onDragOver={event => { event.preventDefault(); if (!mutation.isPending) setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); if (!mutation.isPending) { setFile(event.dataTransfer.files[0] ?? null); mutation.reset(); } }}>
-          <input className="file-input" aria-label="选择本地视频" type="file" accept=".mp4,.mov,.mkv,.webm,.avi,.m4v" disabled={mutation.isPending} onChange={event => { setFile(event.target.files?.[0] ?? null); mutation.reset(); }}/>
-          <div><div className="upload-icon" aria-hidden="true">⇧</div><h3>{file ? file.name : '拖入视频文件'}</h3><p>{file ? (file.size / 1024 ** 2).toFixed(1) + ' MiB · 已选择' : '支持 MP4、MOV、MKV 等常见格式'}<br/>单文件最大 {(maxBytes / 1024 ** 3).toFixed(1)} GiB</p><span className="btn">{file ? '重新选择文件' : '选择本地文件'}</span></div>
-        </div>{file && <button className="btn primary upload-submit" disabled={mutation.isPending}>{mutation.isPending ? pendingLabel : '上传并开始处理 →'}</button>}
-        {mutation.isPending && <progress className="upload-progress" aria-label="上传进度" max="100" value={progress}/>}</>}
-      </div>
-      {mutation.error && <p className="error" role="alert">{mutation.error.message}</p>}
-      {mutation.isPending && <p className="result-meta" role="status">{pendingLabel}，请保持页面打开。</p>}
-    </form></div>
-  </section><aside className="panel add-panel"><div className="panel-head"><h2>处理流程</h2></div><div className="panel-body workflow">{[
-    ['获取视频', '读取本地文件或下载 B 站视频'], ['提取音频', '提取清晰音轨，为全文转写做好准备'], ['全文转写', '使用已配置的语音模型识别视频内容'], ['结构化总结', '一句话摘要、核心要点、详细总结、关键词'], ['保存结果', '结果入库，可随时查看或导出'],
-  ].map(([title], index) => <div className="flow-step" key={title}><div className="flow-no">{String(index + 1).padStart(2, '0')}</div><div className="flow-copy"><strong>{title}</strong></div></div>)}</div></aside></div>;
-}
-
 interface Version { id: string; revision: number; isCurrent: boolean }
 interface Versioned<T> { current: T | null; versions: Version[] }
 function VersionSelect({ label, value, versions, onChange }: { label: string; value: string; versions: Version[]; onChange: (value: string) => void }) {
-  return <select aria-label={label} value={value} onChange={event => onChange(event.target.value)}>
-    <option value="">当前版本</option>{versions.map(version => <option key={version.id} value={version.revision}>版本 {version.revision}{version.isCurrent ? ' · 当前' : ''}</option>)}
-  </select>;
+  return <Select label={label} value={value} onChange={onChange} options={[{ value: '', label: '当前版本' }, ...versions.map(version => ({ value: String(version.revision), label: '版本 ' + version.revision + (version.isCurrent ? ' · 当前' : '') }))]}/>;
 }
 function SummaryMarkdown({ children }: { children: string }) {
   return <Markdown remarkPlugins={[remarkGfm]} skipHtml components={{
