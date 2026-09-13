@@ -165,11 +165,11 @@ input[type=checkbox] { accent-color:#24271f; }
 .stat-meta { line-height:1.5; }
 .video-table { position:relative; overflow:auto; }
 .video-table table { table-layout:fixed; min-width:740px; }
-.video-table th:first-child { width:68%; }
+.video-table th:first-child { width:59%; }
 .video-table th:nth-child(2) { width:13%; }
 .video-table th:nth-child(3) { width:13%; }
-.video-table th:nth-child(4) { width:6%; }
-.video-table th:last-child { width:6%; }
+.video-table th:nth-child(4) { width:15%; }
+.video-table th:last-child { width:15%; }
 .video-table td { border-top:0; }
 .video-link { min-width:0; max-width:none; gap:18px; align-items:center; }
 .video-cover { position:relative; display:flex; flex:0 0 184px; width:184px; aspect-ratio:16/9; overflow:hidden; border-radius:8px; background:#e8eae2; }
@@ -380,3 +380,9 @@ input[type=checkbox] { accent-color:#24271f; }
  .creator-card h3 { font-size:13px; }
  .creator-card p { font-size:10px; }
 }
+
+.video-actions { display:flex; flex-direction:column; align-items:stretch; gap:8px; min-width:90px; }
+.video-actions .btn { justify-content:center; white-space:nowrap; }
+.video-actions .video-delete { color:var(--muted, #74796e); background:transparent; }
+.video-actions .video-delete:hover { color:#c43832; border-color:#e8b2ae; background:#fff0ee; }
+.video-action-error { font-size:12px; color:#c43832; line-height:1.5; overflow-wrap:anywhere; }
