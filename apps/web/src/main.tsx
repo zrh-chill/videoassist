@@ -69,6 +69,9 @@ function AddVideoPage() {
     <ErrorNotice error={capability.error}/>
     <AddVideoForm maxBytes={capability.data?.uploadMaxBytes || 4 * 1024 ** 3} onDone={id => navigate('/videos/' + id)}/></>;
 }
+function VideoByline({ video }: { video: VideoDto }) {
+  return <span className="video-byline">{video.creatorName || (video.sourceType === 'LOCAL' ? '本地上传' : '未知 UP 主')} · {sourceName[video.sourceType]} · {video.publishedAt ? new Date(video.publishedAt).toLocaleDateString('zh-CN') : '发布日期未知'}</span>;
+}
 function VideoCover({ video }: { video: VideoDto }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   let cover: string | null = null;
@@ -109,7 +112,7 @@ function VideoList() {
     {search.has('creatorId') && <p className="notice">正在显示所选 UP 主已导入的视频。<Link to="/creators">返回 UP 主追踪 →</Link></p>}
     <div className="table-wrap video-table"><table><thead><tr><th>视频</th><th>当前状态</th><th>创建时间</th><th><span className="sr-only">操作</span></th></tr></thead>
       <tbody>{query.data?.items.map(video => <tr key={video.id}>
-        <td><Link className="video-link" to={'/videos/' + video.id}><VideoCover video={video}/><span className="video-copy"><strong title={video.title}>{video.title}</strong><span className="video-byline">{video.creatorName || (video.sourceType === 'LOCAL' ? '本地上传' : '未知 UP 主')} · {sourceName[video.sourceType]} · {video.publishedAt ? new Date(video.publishedAt).toLocaleDateString('zh-CN') : '发布日期未知'}</span><span className="video-excerpt" title={video.oneSentence || undefined}>{video.oneSentence || '暂无一句话总结'}</span></span></Link></td>
+        <td><Link className="video-link" to={'/videos/' + video.id}><VideoCover video={video}/><span className="video-copy"><strong title={video.title}>{video.title}</strong><VideoByline video={video}/><span className="video-excerpt" title={video.oneSentence || undefined}>{video.oneSentence || '暂无一句话总结'}</span></span></Link></td>
         <td><Status status={video.overallStatus}/></td><td className="mono"><time dateTime={video.createdAt} title={time(video.createdAt)}>{new Date(video.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</time></td><td><Link className="icon-btn" aria-label={'查看详情：' + video.title} title="查看详情" to={'/videos/' + video.id}>↗</Link></td>
       </tr>)}</tbody></table>
       {query.isPending && <div className="empty">正在读取任务…</div>}
@@ -144,7 +147,7 @@ function Detail() {
   const terminal = ['DISCOVERED', 'COMPLETED', 'FAILED', 'CANCELED'].includes(video.overallStatus);
   return <>
     <Link className="detail-back" to="/">← 返回视频任务</Link>
-    <header className="detail-hero"><div className="hero-thumb">▷</div><div><div className="eyebrow">VIDEO / KNOWLEDGE</div><h1>{video.title}</h1><p className="subtitle">{sourceName[video.sourceType]}{video.creatorName ? ' · ' + video.creatorName : ''} · 创建于 {time(video.createdAt)}</p>{video.originalUrl && <a className="detail-source" href={video.originalUrl} target="_blank" rel="noreferrer">打开原视频 ↗</a>}</div><Status status={video.overallStatus}/></header>
+    <header className="detail-hero"><VideoCover video={video}/><div className="detail-heading"><h1>{video.title}</h1><VideoByline video={video}/>{video.originalUrl && <a className="detail-source" href={video.originalUrl} target="_blank" rel="noreferrer">打开原视频 ↗</a>}</div><Status status={video.overallStatus}/></header>
     {video.sourceType === 'SIMULATION' && <div className="notice"><strong>模拟处理结果</strong><span>此记录由模拟处理器生成，未调用真实模型。</span></div>}
     <ErrorNotice error={action.error}/><ErrorNotice error={runs.error}/>
     {video.latestErrorMessage && <p className="error" role="alert">{video.latestErrorMessage} <span className="mono">{video.latestErrorCode}</span></p>}
