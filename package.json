@@ -2,6 +2,16 @@
   "name": "videoassist",
   "private": true,
   "version": "0.1.0",
+  "description": "帧语 FrameNote：本地视频转写与 AI 总结工具，支持 B 站导入、UP 主追踪、版本管理和备份恢复。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zrh-chill/videoassist.git"
+  },
+  "homepage": "https://github.com/zrh-chill/videoassist#readme",
+  "bugs": {
+    "url": "https://github.com/zrh-chill/videoassist/issues"
+  },
   "type": "module",
   "packageManager": "pnpm@11.19.0",
   "engines": {
