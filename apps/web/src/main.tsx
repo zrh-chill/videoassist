@@ -7,6 +7,7 @@ import { stages, statuses } from '../../../packages/contracts/src/index';
 import { api, useEvents } from './api';
 import './styles.css';
 import { AddVideoForm, MediaResults, ReprocessActions, sourceName } from './media';
+import { SettingsPage } from './settings';
 
 const client = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchInterval: 10_000, refetchIntervalInBackground: true } } });
 const names: Record<string, string> = {
@@ -34,16 +35,18 @@ function PageRoutes() {
   }, [location, leaving]);
   // Keep the outgoing route mounted during its fade; filters and SSE never restart it.
   return <div key={shownLocation.pathname} className={'page-transition ' + (leaving ? 'page-leaving' : 'page-entering')} inert={leaving}>
-    <Routes location={leaving ? shownLocation : location}><Route path="/" element={<VideoList/>}/><Route path="/videos/:id" element={<Detail/>}/><Route path="*" element={<p>页面不存在，<Link to="/">返回任务列表</Link></p>}/></Routes>
+    <Routes location={leaving ? shownLocation : location}><Route path="/" element={<VideoList/>}/><Route path="/videos/:id" element={<Detail/>}/><Route path="/settings" element={<SettingsPage/>}/><Route path="*" element={<p>页面不存在，<Link to="/">返回任务列表</Link></p>}/></Routes>
   </div>;
 }
 function Layout() {
   const connected = useEvents();
+  const location = useLocation();
   return <div className="app">
     <aside className="sidebar">
       <Link to="/" className="brand"><span className="brand-mark">帧</span><span><strong>帧语</strong><small>FRAMENOTE / WORKSPACE</small></span></Link>
       <span className="nav-label">工作空间</span>
-      <Link to="/" className="nav-item active"><span>▤</span> 视频任务</Link>
+      <Link to="/" className={'nav-item' + (location.pathname !== '/settings' ? ' active' : '')}><span>▤</span> 视频任务</Link>
+      <Link to="/settings" className={'nav-item' + (location.pathname === '/settings' ? ' active' : '')}><span>⚙</span> 系统设置</Link>
       <div className="sidebar-foot"><span className={'dot ' + (connected ? 'live' : '')}/>{connected ? '实时更新已连接' : '每 10 秒同步状态'}<p>视频转写与内容整理</p></div>
     </aside>
     <main className="main"><PageRoutes/></main>
@@ -53,6 +56,8 @@ function VideoList() {
   const [search, setSearch] = useSearchParams();
   const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
+  const [exportHistory, setExportHistory] = useState(false);
+  const exportQuery = new URLSearchParams(search); exportQuery.delete('cursor'); exportQuery.delete('limit'); exportQuery.set('history', String(exportHistory));
   const query = useQuery({ queryKey: ['videos', search.toString()], queryFn: () => api<VideoPage>('/videos?' + search.toString()) });
   const capability = useQuery({ queryKey: ['capabilities'], queryFn: () => api<{ simulation: boolean; uploadMaxBytes: number }>('/capabilities'), refetchInterval: false });
   const filter = (key: string, value: string) => {
@@ -68,6 +73,7 @@ function VideoList() {
       <label><span className="sr-only">处理状态</span><select value={search.get('status') || ''} onChange={event => filter('status', event.target.value)}><option value="">全部状态</option>{statuses.map(status => <option key={status} value={status}>{names[status]}</option>)}</select></label>
       <select aria-label="视频来源" value={search.get('sourceType') || ''} onChange={event => filter('sourceType', event.target.value)}><option value="">全部来源</option>{Object.entries(sourceName).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
       <button className="btn" onClick={() => setSearch({})}>重置筛选</button></div>
+    <div className="actions"><a className="btn" href={'/api/v1/exports/videos.xlsx?' + exportQuery.toString()} download>导出筛选结果 Excel</a><label className="checkbox"><input type="checkbox" checked={exportHistory} onChange={event => setExportHistory(event.target.checked)}/>包含处理记录</label><small className="subtitle">超长文稿和总结会标记截断，全文可在详情查看。</small></div>
     <ErrorNotice error={query.error}/>
     <div className="table-wrap"><table><thead><tr><th>视频</th><th>来源</th><th>当前状态</th><th>创建时间</th><th>操作</th></tr></thead>
       <tbody>{query.data?.items.map(video => <tr key={video.id}>
