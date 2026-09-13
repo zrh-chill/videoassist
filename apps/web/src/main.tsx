@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
 import type { VideoDto, VideoPage, VideoDetail, RunDto } from '../../../packages/contracts/src/index';
 import { stages, statuses } from '../../../packages/contracts/src/index';
 import { api, useEvents } from './api';
 import './styles.css';
 import './fidelity.css';
-import { AddVideoForm, MediaResults, ReprocessActions, sourceName } from './media';
+import { MediaResults, ReprocessActions, sourceName } from './media';
 import { SettingsPage } from './settings';
 import { CreatorsPage, MaintenancePage } from './operations';
+import { VideoImport } from './video-import';
 import { VideoTable, VideoCover, VideoByline } from './video-table';
 
 const client = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchInterval: 10_000, refetchIntervalInBackground: true } } });
@@ -39,7 +40,7 @@ function PageRoutes() {
   }, [location, leaving]);
   // Keep the outgoing route mounted during its fade; filters and SSE never restart it.
   return <div key={shownLocation.pathname} className={'page-transition ' + (leaving ? 'page-leaving' : 'page-entering')} inert={leaving}>
-    <Routes location={leaving ? shownLocation : location}><Route path="/" element={<VideoList/>}/><Route path="/add" element={<AddVideoPage/>}/><Route path="/videos/:id" element={<Detail/>}/><Route path="/settings" element={<SettingsPage/>}/><Route path="/creators" element={<CreatorsPage/>}/><Route path="/maintenance" element={<MaintenancePage/>}/><Route path="*" element={<p>页面不存在，<Link to="/">返回任务列表</Link></p>}/></Routes>
+    <Routes location={leaving ? shownLocation : location}><Route path="/" element={<VideoList/>}/><Route path="/add" element={<Navigate to="/" replace/>}/><Route path="/videos/:id" element={<Detail/>}/><Route path="/settings" element={<SettingsPage/>}/><Route path="/creators" element={<CreatorsPage/>}/><Route path="/maintenance" element={<MaintenancePage/>}/><Route path="*" element={<p>页面不存在，<Link to="/">返回任务列表</Link></p>}/></Routes>
   </div>;
 }
 function Layout() {
@@ -52,7 +53,6 @@ function Layout() {
       <nav aria-label="主导航">
         <div className="nav-label">WORKSPACE</div>
         <Link to="/" aria-current={location.pathname === '/' || location.pathname.startsWith('/videos/') ? 'page' : undefined} className={'nav-item' + (location.pathname === '/' || location.pathname.startsWith('/videos/') ? ' active' : '')}><span className="nav-icon">▦</span>视频任务<span className="nav-badge">{count.data?.total ?? '—'}</span></Link>
-        <Link to="/add" aria-current={location.pathname === '/add' ? 'page' : undefined} className={'nav-item' + (location.pathname === '/add' ? ' active' : '')}><span className="nav-icon">＋</span>添加视频</Link>
         <Link to="/creators" aria-current={location.pathname === '/creators' ? 'page' : undefined} className={'nav-item' + (location.pathname === '/creators' ? ' active' : '')}><span className="nav-icon">◎</span>UP 主追踪</Link>
         <div className="nav-label system-label">SYSTEM</div>
         <Link to="/settings" aria-current={location.pathname === '/settings' ? 'page' : undefined} className={'nav-item' + (location.pathname === '/settings' ? ' active' : '')}><span className="nav-icon">⚙</span>系统设置</Link>
@@ -62,13 +62,6 @@ function Layout() {
     </aside>
     <main className="main"><PageRoutes/></main>
   </div>;
-}
-function AddVideoPage() {
-  const navigate = useNavigate();
-  const capability = useQuery({ queryKey: ['capabilities'], queryFn: () => api<{ uploadMaxBytes: number }>('/capabilities'), refetchInterval: false });
-  return <><header className="topbar"><div><h1>添加视频</h1></div></header>
-    <ErrorNotice error={capability.error}/>
-    <AddVideoForm maxBytes={capability.data?.uploadMaxBytes || 4 * 1024 ** 3} onDone={id => navigate('/videos/' + id)}/></>;
 }
 function VideoList() {
   const [search, setSearch] = useSearchParams();
@@ -90,8 +83,8 @@ function VideoList() {
     setSearch(previous => { const next = new URLSearchParams(previous); next.delete('cursor'); value ? next.set(key, value) : next.delete(key); return next; });
   };
   return <>
-    <header className="topbar"><div><h1>视频任务</h1></div>
-      <div className="top-actions"><div className="export-control"><a className="btn" href={'/api/v1/exports/videos.xlsx?' + exportQuery.toString()} download>⇩ 导出 Excel</a><details className="export-options"><summary aria-label="导出选项">⌄</summary><div className="export-popover"><strong>导出当前筛选结果</strong><label className="checkbox"><input type="checkbox" checked={exportHistory} onChange={event => setExportHistory(event.target.checked)}/>包含处理记录</label><p>超长单元格会标记截断，全文可在详情查看。</p></div></details></div><Link className="btn primary" to="/add">＋ 添加视频</Link></div></header>
+    <header className="topbar video-list-heading"><h1>视频任务</h1></header>
+    <VideoImport onAdded={() => setSearch({})}><div className="export-control"><a className="btn" href={'/api/v1/exports/videos.xlsx?' + exportQuery.toString()} download>⇩ 导出 Excel</a><details className="export-options"><summary aria-label="导出选项">⌄</summary><div className="export-popover"><strong>导出当前筛选结果</strong><label className="checkbox"><input type="checkbox" checked={exportHistory} onChange={event => setExportHistory(event.target.checked)}/>包含处理记录</label><p>超长单元格会标记截断，全文可在详情查看。</p></div></details></div></VideoImport>
     <div className="stats">{stats.map(stat => <div className="stat" key={stat.label}><div className="stat-label">{stat.label}</div><div className={'stat-value' + (stat.danger ? ' stat-danger' : '')}>{stat.value === undefined ? '—' : String(stat.value).padStart(2, '0')}</div></div>)}</div>
     <ErrorNotice error={counts.find(item => item.error)?.error ?? null}/>
     <div className="toolbar"><label className="search-label"><span aria-hidden="true">⌕</span><input aria-label="搜索视频标题" placeholder="搜索视频标题…" value={search.get('q') || ''} onChange={event => filter('q', event.target.value)}/></label>
@@ -100,7 +93,7 @@ function VideoList() {
       <button className="btn small" onClick={() => setSearch({})}>重置</button></div>
     <ErrorNotice error={query.error}/>
     {search.has('creatorId') && <p className="notice">正在显示所选 UP 主已导入的视频。<Link to="/creators">返回 UP 主追踪 →</Link></p>}
-    <VideoTable items={query.data?.items || []} loading={query.isPending} empty={<><b>还没有匹配的任务</b><Link className="btn primary" to="/add">＋ 添加视频</Link></>}/>
+    <VideoTable items={query.data?.items || []} loading={query.isPending} empty={<><b>还没有匹配的任务</b><button className="btn primary" onClick={() => document.getElementById('video-url')?.focus()}>＋ 添加视频</button></>}/>
     <div className="pagination"><span>显示 {query.data?.items.length ?? 0} 条，共 {query.data?.total ?? 0} 条</span><div className="top-actions">{search.has('cursor') && <button className="btn small" onClick={() => filter('cursor', '')}>← 返回首页</button>}<button className="btn small" disabled={!query.data?.nextCursor} onClick={() => setSearch(previous => { const next = new URLSearchParams(previous); next.set('cursor', query.data!.nextCursor!); return next; })}>下一页 →</button></div></div>
   </>;
 }
