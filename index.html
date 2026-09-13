@@ -226,14 +226,29 @@
     .action-list { display: grid; gap: 7px; }
     .action-list .btn { width: 100%; justify-content: flex-start; background: #f7f8f2; }
 
-    .creator-list { display: grid; gap: 10px; }
-    .creator-card { display: grid; grid-template-columns: auto 1fr auto auto; gap: 15px; align-items: center; padding: 15px 17px; border: 1px solid var(--line); border-radius: 11px; background: var(--card); }
+    .creator-list { display: grid; gap: 12px; }
+    .creator-group { border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow: hidden; transition: .2s ease; }
+    .creator-group.open { box-shadow: var(--shadow); border-color: #bec1b6; }
+    .creator-card { display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 15px; align-items: center; padding: 15px 17px; background: var(--card); }
     .avatar { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: #343831; font-weight: 700; }
     .creator-card h3 { margin: 0 0 4px; font-size: 13px; }
     .creator-card p { margin: 0; color: var(--muted); font-size: 10px; }
     .creator-stat { padding: 0 20px; border-left: 1px solid var(--line); text-align: center; }
     .creator-stat b { display: block; font: 16px "DM Mono"; }
     .creator-stat span { color: var(--muted); font-size: 9px; }
+    .creator-toggle { min-width: 114px; }
+    .creator-toggle .chevron { display: inline-block; transition: transform .2s ease; }
+    .creator-group.open .creator-toggle .chevron { transform: rotate(180deg); }
+    .creator-videos { display: none; padding: 0 17px 17px 74px; background: linear-gradient(180deg,#f6f7f0,#fafaf5); border-top: 1px solid #e3e5dc; }
+    .creator-group.open .creator-videos { display: block; animation: reveal .22s ease both; }
+    .creator-videos-head { display: flex; justify-content: space-between; align-items: center; padding: 13px 1px 10px; color: var(--muted); font-size: 10px; }
+    .creator-video-row { display: grid; grid-template-columns: minmax(300px,1fr) 110px 120px 90px 32px; gap: 13px; align-items: center; min-height: 53px; padding: 7px 10px; border-top: 1px solid #e5e7de; }
+    .creator-video-row:first-of-type { border-top: 0; }
+    .creator-video-main { min-width: 0; }
+    .creator-video-title { overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .creator-video-meta { margin-top: 3px; color: var(--muted); font: 9px "DM Mono"; }
+    .creator-video-row .date { color: var(--muted); font: 10px "DM Mono"; }
+    .creator-empty { padding: 22px; border: 1px dashed #cfd2c7; border-radius: 8px; color: var(--muted); text-align: center; font-size: 11px; }
 
     .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
     .form-row { margin-bottom: 15px; }
@@ -334,9 +349,27 @@
       <section class="page" id="page-creators">
         <header class="topbar"><div><h1>UP 主追踪</h1><div class="subtitle">手动检查关注的创作者，自动发现并处理新视频。</div></div><div class="top-actions"><button class="btn" id="checkAllBtn">↻ 全部检查</button><button class="btn primary" id="addCreatorBtn">＋ 添加 UP 主</button></div></header>
         <div class="creator-list">
-          <div class="creator-card"><div class="avatar">科</div><div><h3>科技前线局</h3><p>UID 38294102 · 上次检查 09-13 08:30 · 自动处理已开启</p></div><div class="creator-stat"><b>128</b><span>视频</span></div><button class="btn small check-btn">立即检查</button></div>
-          <div class="creator-card"><div class="avatar" style="background:#57517f">码</div><div><h3>码农参上</h3><p>UID 9981204 · 上次检查 09-12 22:10 · 手动处理</p></div><div class="creator-stat"><b>05</b><span>最新获取</span></div><button class="btn small check-btn">立即检查</button></div>
-          <div class="creator-card"><div class="avatar" style="background:#9a663e">杰</div><div><h3>阿杰独立开发</h3><p>UID 6712903 · 上次检查 09-12 18:22 · 自动处理已开启</p></div><div class="creator-stat"><b>01</b><span>本周新增</span></div><button class="btn small check-btn">立即检查</button></div>
+          <div class="creator-group open">
+            <div class="creator-card"><div class="avatar">科</div><div><h3>科技前线局</h3><p>UID 38294102 · 上次检查 09-13 08:30 · 自动处理已开启</p></div><div class="creator-stat"><b>12</b><span>已处理</span></div><button class="btn small check-btn">立即检查</button><button class="btn small creator-toggle">视频记录 <span class="chevron">⌄</span></button></div>
+            <div class="creator-videos"><div class="creator-videos-head"><span>已处理的视频 · 最近 3 条</span><span>状态与视频任务保持同步</span></div>
+              <div class="creator-video-row"><div class="creator-video-main"><div class="creator-video-title">AI Agent 的下一站：从工具调用到自主协作</div><div class="creator-video-meta">BV1aG411Q7xx · 32:16</div></div><span class="status done">✓ 已完成</span><span class="date">09-13 09:42</span><span class="mono">04:21</span><button class="icon-btn creator-detail" title="查看详情">↗</button></div>
+              <div class="creator-video-row"><div class="creator-video-main"><div class="creator-video-title">从 RAG 到 Context Engineering：别再只谈向量库</div><div class="creator-video-meta">BV1kQ4y1A7mP · 24:08</div></div><span class="status done">✓ 已完成</span><span class="date">09-10 16:20</span><span class="mono">03:34</span><button class="icon-btn creator-detail">↗</button></div>
+              <div class="creator-video-row"><div class="creator-video-main"><div class="creator-video-title">2026 年 AI 产品经理需要掌握的五件事</div><div class="creator-video-meta">BV17H4y1c3De · 41:52</div></div><span class="status done">✓ 已完成</span><span class="date">09-06 11:05</span><span class="mono">05:18</span><button class="icon-btn creator-detail">↗</button></div>
+            </div>
+          </div>
+          <div class="creator-group">
+            <div class="creator-card"><div class="avatar" style="background:#57517f">码</div><div><h3>码农参上</h3><p>UID 9981204 · 上次检查 09-12 22:10 · 手动处理</p></div><div class="creator-stat"><b>07</b><span>已处理</span></div><button class="btn small check-btn">立即检查</button><button class="btn small creator-toggle">视频记录 <span class="chevron">⌄</span></button></div>
+            <div class="creator-videos"><div class="creator-videos-head"><span>已发现的视频 · 最近 2 条</span><span>1 条需要处理</span></div>
+              <div class="creator-video-row"><div class="creator-video-main"><div class="creator-video-title">为什么你的大模型应用总在 Demo 阶段？</div><div class="creator-video-meta">BV1vT411L8kb · 18:44</div></div><span class="status failed">! 转写失败</span><span class="date">09-12 22:16</span><span class="mono">01:08</span><button class="icon-btn creator-detail">↗</button></div>
+              <div class="creator-video-row"><div class="creator-video-main"><div class="creator-video-title">用事件驱动重构我的 Agent 工作流</div><div class="creator-video-meta">BV1pM4y1S9cq · 27:19</div></div><span class="status done">✓ 已完成</span><span class="date">09-03 20:41</span><span class="mono">03:12</span><button class="icon-btn creator-detail">↗</button></div>
+            </div>
+          </div>
+          <div class="creator-group">
+            <div class="creator-card"><div class="avatar" style="background:#9a663e">杰</div><div><h3>阿杰独立开发</h3><p>UID 6712903 · 上次检查 09-12 18:22 · 自动处理已开启</p></div><div class="creator-stat"><b>05</b><span>已处理</span></div><button class="btn small check-btn">立即检查</button><button class="btn small creator-toggle">视频记录 <span class="chevron">⌄</span></button></div>
+            <div class="creator-videos"><div class="creator-videos-head"><span>已处理的视频 · 最近 1 条</span><span>本周新增 1 条</span></div>
+              <div class="creator-video-row"><div class="creator-video-main"><div class="creator-video-title">独立开发者的一人公司：我的年度复盘</div><div class="creator-video-meta">BV1sN411Y2px · 46:21</div></div><span class="status done">✓ 已完成</span><span class="date">09-12 18:30</span><span class="mono">05:02</span><button class="icon-btn creator-detail">↗</button></div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -409,6 +442,8 @@
     document.getElementById('saveSettings').addEventListener('click', () => toast('系统设置已保存'));
     document.querySelectorAll('.action-toast').forEach(b => b.addEventListener('click', () => toast(`${b.textContent.trim()}任务已创建`)));
     document.querySelectorAll('.check-btn').forEach(b => b.addEventListener('click', () => { b.textContent='检查中...'; setTimeout(()=>{b.textContent='立即检查'; toast('检查完成，没有发现新视频');}, 900); }));
+    document.querySelectorAll('.creator-toggle').forEach(b => b.addEventListener('click', () => b.closest('.creator-group').classList.toggle('open')));
+    document.querySelectorAll('.creator-detail').forEach(b => b.addEventListener('click', () => showPage('detail')));
     document.getElementById('checkAllBtn').addEventListener('click', () => toast('正在检查 3 位 UP 主的最新视频'));
     document.querySelectorAll('.retry-btn').forEach(b => b.addEventListener('click', () => { const cell=b.closest('tr').querySelector('td:nth-child(3)'); cell.innerHTML='<span class="status running"><i class="spin"></i>等待重试</span>'; b.remove(); toast('已从失败阶段重新创建任务'); }));
     document.getElementById('parseBtn').addEventListener('click', () => {
