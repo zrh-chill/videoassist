@@ -55,7 +55,9 @@ export async function backupWorkspace(db: Database, config: AppConfig, operation
     for (const row of snapshot.prepare('SELECT storageKey, sha256, kind, mimeType FROM Artifact WHERE deletedAt IS NULL').iterate()) {
       signal.throwIfAborted();
       const key = String(row.storageKey);
-      const file = await checkedFile(config.dataDir, key);
+      let file: string;
+      try { file = await checkedFile(config.dataDir, key); }
+      catch { throw new DomainError('BACKUP_MEDIA_MISSING', '存在缺失或不可读取的媒体，备份未完成'); }
       const destination = resolveStorageKey(staging, key);
       await mkdir(path.dirname(destination), { recursive: true }); await copyFile(file, destination);
       const copied = await describeFile(staging, key, row.kind as 'SOURCE_VIDEO' | 'AUDIO', String(row.mimeType));
