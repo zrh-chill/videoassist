@@ -78,7 +78,8 @@ test('B 站规范化去掉追踪参数并拒绝伪造主机与多分 P', () => {
 });
 test('同 BVID 并发导入仅保存一条记录和任务', async () => {
   const library = new MediaLibrary(db);
-  const input = { sourceType: 'BILIBILI' as const, title: '测试', ...normalizeBilibiliUrl('https://www.bilibili.com/video/BV17xo9BsEnx/') };
+  const normalized = normalizeBilibiliUrl('https://www.bilibili.com/video/BV17xo9BsEnx/');
+  const input = { sourceType: 'BILIBILI' as const, title: '测试', bvid: normalized.bvid, originalUrl: normalized.url };
   const results = await Promise.all([library.importVideo(input, randomUUID()), library.importVideo(input, randomUUID())]);
   assert.equal(results[0]!.id, results[1]!.id); assert.equal(await db.video.count(), 1); assert.equal(await db.job.count(), 1);
 });
