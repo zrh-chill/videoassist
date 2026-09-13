@@ -12,6 +12,7 @@ import { initializeStorage, resolveStorageKey } from '../packages/storage/src/in
 import { createApp } from '../apps/api/src/app.js';
 import { Worker } from '../apps/worker/src/runner.js';
 import { simulationHandler } from '../packages/integrations/src/simulation.js';
+import { applyTestMigrations } from './helpers.js';
 
 let db: Database;
 let tasks: Tasks;
@@ -22,8 +23,7 @@ beforeEach(async () => {
   url = 'file:' + path.join(root, 'db', 'test.sqlite').replaceAll('\\', '/');
   await initializeStorage(root);
   db = createDatabase(url);
-  const migration = await readFile(path.join(projectRoot, 'packages/database/prisma/migrations/202609130001_initial/migration.sql'), 'utf8');
-  for (const statement of migration.split(';').map(value => value.trim()).filter(Boolean)) await db.$executeRawUnsafe(statement);
+  await applyTestMigrations(db);
   await initializeDatabase(db);
   tasks = new Tasks(db);
 });
