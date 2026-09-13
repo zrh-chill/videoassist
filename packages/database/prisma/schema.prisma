@@ -113,6 +113,7 @@ model Artifact {
   mimeType String
   createdAt DateTime @default(now())
   deletedAt DateTime?
+  isCurrent Boolean @default(true)
   @@index([videoId, kind, createdAt])
 }
 model Transcript {
