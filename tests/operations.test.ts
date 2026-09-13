@@ -42,7 +42,7 @@ test('精简投稿列表补齐标题昵称，数量受限且伪造视频链接�
   let calls = 0;
   const providers = {
     runTool: async () => JSON.stringify({ entries: [{ id: 'BV17xo9BsEnx' }, { id: 'BV1JttL67Ek6' }] }),
-    bilibiliMetadata: async () => { calls++; return { title: '补齐标题', creatorName: '补齐昵称', durationMs: 1000, publishedAt: undefined, coverUrl: undefined }; },
+    bilibiliMetadata: async () => { calls++; return { title: '补齐标题', creatorName: '补齐昵称', creatorUid: undefined, durationMs: 1000, publishedAt: undefined, coverUrl: undefined }; },
   };
   const result = await fetchCreatorVideos('12345', 1, config, signal(), providers);
   assert.equal(result.name, '补齐昵称'); assert.equal(result.videos[0]!.title, '补齐标题'); assert.equal(calls, 1);
@@ -179,4 +179,40 @@ test('全局追踪设置持久化并应用所有 UP 主，添加不创建检查�
     assert.equal((await db.video.findFirstOrThrow()).overallStatus, 'DISCOVERED');
     assert.equal(await db.job.count(), 0);
   } finally { await app.close(); }
+});
+
+test('从视频追踪按 UID 关联历史记录，重复请求只创建一次检查', async () => {
+  const first = await db.video.create({ data: { title: '一', sourceType: 'BILIBILI', creatorUid: '12345' } });
+  const second = await db.video.create({ data: { title: '二', sourceType: 'BILIBILI', creatorUid: '12345' } });
+  const other = await db.video.create({ data: { title: '同名不同人', creatorUid: '67890' } });
+  const key = randomUUID();
+  const result = await operations.trackVideo(first.id, key);
+  assert.deepEqual(await operations.trackVideo(first.id, key), result);
+  assert.equal((await db.video.findUniqueOrThrow({ where: { id: second.id } })).creatorId, result.id);
+  assert.equal((await db.video.findUniqueOrThrow({ where: { id: other.id } })).creatorId, null);
+  assert.equal(await db.operation.count(), 1);
+  await operations.editCreator(result.id, { enabled: false });
+  assert.equal((await new Tasks(db).list({ q: '', limit: 20 })).items.find(v => v.id === first.id)?.creator?.enabled, false);
+});
+test('元数据关联已追踪 UP，逻辑删除阻止旧任务提交和自动重新导入', async () => {
+  const creator = await add(true);
+  const media = new MediaLibrary(db); const tasks = new Tasks(db);
+  const video = await media.importVideo({ sourceType: 'BILIBILI', bvid: found.videos[0].bvid, title: '链接导入' }, randomUUID());
+  await db.$transaction(tx => persistMedia(tx, video.id, { metadata: { title: '真实标题', durationMs: 1000, creatorUid: '12345' } }));
+  assert.equal((await tasks.detail(video.id)).creatorId, creator.id);
+  const job = await tasks.claim('delete-test');
+  assert.ok(job);
+  await tasks.softDelete(video.id);
+  await tasks.softDelete(video.id);
+  assert.equal(await tasks.finish(job.id, 'delete-test', { simulated: true, text: '迟到结果' }), false);
+  assert.equal((await tasks.list({ q: '', limit: 20 })).total, 0);
+  await assert.rejects(tasks.detail(video.id), { code: 'VIDEO_NOT_FOUND' });
+  await assert.rejects(tasks.retry(video.id, randomUUID()), { code: 'VIDEO_NOT_FOUND' });
+  await assert.rejects(media.start(video.id, randomUUID()), { code: 'VIDEO_NOT_FOUND' });
+  await assert.rejects(media.importVideo({ sourceType: 'BILIBILI', bvid: found.videos[0].bvid, title: '再次导入' }, randomUUID()), { code: 'VIDEO_DELETED' });
+  await operations.enqueue('CREATOR_CHECK', randomUUID(), creator.id);
+  const check = await operations.claim('check-test'); assert.ok(check);
+  await operations.finish(check.id, 'check-test', found);
+  assert.equal(await db.video.count(), 1);
+  assert.equal((await db.video.findUniqueOrThrow({ where: { id: video.id } })).isDeleted, true);
 });
