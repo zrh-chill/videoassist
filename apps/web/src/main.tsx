@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
 import type { VideoDto, VideoPage, VideoDetail, RunDto } from '../../../packages/contracts/src/index';
 import { stages, statuses } from '../../../packages/contracts/src/index';
 import { api, useEvents } from './api';
 import './styles.css';
+import './fidelity.css';
 import { AddVideoForm, MediaResults, ReprocessActions, sourceName } from './media';
 import { SettingsPage } from './settings';
 import { CreatorsPage, MaintenancePage } from './operations';
@@ -37,58 +38,76 @@ function PageRoutes() {
   }, [location, leaving]);
   // Keep the outgoing route mounted during its fade; filters and SSE never restart it.
   return <div key={shownLocation.pathname} className={'page-transition ' + (leaving ? 'page-leaving' : 'page-entering')} inert={leaving}>
-    <Routes location={leaving ? shownLocation : location}><Route path="/" element={<VideoList/>}/><Route path="/videos/:id" element={<Detail/>}/><Route path="/settings" element={<SettingsPage/>}/><Route path="/creators" element={<CreatorsPage/>}/><Route path="/maintenance" element={<MaintenancePage/>}/><Route path="*" element={<p>页面不存在，<Link to="/">返回任务列表</Link></p>}/></Routes>
+    <Routes location={leaving ? shownLocation : location}><Route path="/" element={<VideoList/>}/><Route path="/add" element={<AddVideoPage/>}/><Route path="/videos/:id" element={<Detail/>}/><Route path="/settings" element={<SettingsPage/>}/><Route path="/creators" element={<CreatorsPage/>}/><Route path="/maintenance" element={<MaintenancePage/>}/><Route path="*" element={<p>页面不存在，<Link to="/">返回任务列表</Link></p>}/></Routes>
   </div>;
 }
 function Layout() {
   const connected = useEvents();
   const location = useLocation();
+  const count = useQuery({ queryKey: ['videos', 'count'], queryFn: () => api<VideoPage>('/videos?limit=1') });
   return <div className="app">
     <aside className="sidebar">
-      <Link to="/" className="brand"><span className="brand-mark">帧</span><span><strong>帧语</strong><small>FRAMENOTE / WORKSPACE</small></span></Link>
-      <span className="nav-label">工作空间</span>
-      <Link to="/" className={'nav-item' + (location.pathname === '/' || location.pathname.startsWith('/videos/') ? ' active' : '')}><span>▤</span> 视频任务</Link>
-      <Link to="/creators" className={'nav-item' + (location.pathname === '/creators' ? ' active' : '')}><span>◎</span> UP 主追踪</Link>
-      <Link to="/settings" className={'nav-item' + (location.pathname === '/settings' ? ' active' : '')}><span>⚙</span> 系统设置</Link>
-      <Link to="/maintenance" className={'nav-item' + (location.pathname === '/maintenance' ? ' active' : '')}><span>▣</span> 备份与维护</Link>
+      <Link to="/" className="brand"><span className="brand-mark">帧</span><span><strong>帧语</strong><small>FRAMENOTE</small></span></Link>
+      <nav aria-label="主导航">
+        <div className="nav-label">WORKSPACE</div>
+        <Link to="/" aria-current={location.pathname === '/' || location.pathname.startsWith('/videos/') ? 'page' : undefined} className={'nav-item' + (location.pathname === '/' || location.pathname.startsWith('/videos/') ? ' active' : '')}><span className="nav-icon">▦</span>视频任务<span className="nav-badge">{count.data?.total ?? '—'}</span></Link>
+        <Link to="/add" aria-current={location.pathname === '/add' ? 'page' : undefined} className={'nav-item' + (location.pathname === '/add' ? ' active' : '')}><span className="nav-icon">＋</span>添加视频</Link>
+        <Link to="/creators" aria-current={location.pathname === '/creators' ? 'page' : undefined} className={'nav-item' + (location.pathname === '/creators' ? ' active' : '')}><span className="nav-icon">◎</span>UP 主追踪</Link>
+        <div className="nav-label system-label">SYSTEM</div>
+        <Link to="/settings" aria-current={location.pathname === '/settings' ? 'page' : undefined} className={'nav-item' + (location.pathname === '/settings' ? ' active' : '')}><span className="nav-icon">⚙</span>系统设置</Link>
+        <Link to="/maintenance" aria-current={location.pathname === '/maintenance' ? 'page' : undefined} className={'nav-item' + (location.pathname === '/maintenance' ? ' active' : '')}><span className="nav-icon">▣</span>备份与维护</Link>
+      </nav>
       <div className="sidebar-foot"><span className={'dot ' + (connected ? 'live' : '')}/>{connected ? '实时更新已连接' : '每 10 秒同步状态'}<p>视频转写与内容整理</p></div>
     </aside>
     <main className="main"><PageRoutes/></main>
   </div>;
 }
+function AddVideoPage() {
+  const navigate = useNavigate();
+  const capability = useQuery({ queryKey: ['capabilities'], queryFn: () => api<{ uploadMaxBytes: number }>('/capabilities'), refetchInterval: false });
+  return <><header className="topbar"><div><h1>添加视频</h1><p className="subtitle">上传本地文件，或粘贴 B 站视频链接。</p></div></header>
+    <ErrorNotice error={capability.error}/>
+    <AddVideoForm maxBytes={capability.data?.uploadMaxBytes || 4 * 1024 ** 3} onDone={id => navigate('/videos/' + id)}/></>;
+}
 function VideoList() {
   const [search, setSearch] = useSearchParams();
-  const navigate = useNavigate();
-  const [adding, setAdding] = useState(false);
   const [exportHistory, setExportHistory] = useState(false);
   const exportQuery = new URLSearchParams(search); exportQuery.delete('cursor'); exportQuery.delete('limit'); exportQuery.set('history', String(exportHistory));
   const query = useQuery({ queryKey: ['videos', search.toString()], queryFn: () => api<VideoPage>('/videos?' + search.toString()) });
-  const capability = useQuery({ queryKey: ['capabilities'], queryFn: () => api<{ simulation: boolean; uploadMaxBytes: number }>('/capabilities'), refetchInterval: false });
+  const counts = useQueries({ queries: ['', 'FETCHING', 'EXTRACTING_AUDIO', 'TRANSCRIBING', 'SUMMARIZING', 'COMPLETED', 'FAILED'].map(status => ({
+    queryKey: ['videos', 'count', status], queryFn: () => api<VideoPage>('/videos?limit=1' + (status ? '&status=' + status : '')),
+  })) });
+  const number = (index: number) => counts[index]?.data?.total;
+  const running = counts.slice(1, 5).every(item => item.data) ? counts.slice(1, 5).reduce((sum, item) => sum + item.data!.total, 0) : undefined;
+  const stats = [
+    { label: '全部视频', value: number(0), meta: '所有已导入的视频任务' },
+    { label: '处理中', value: running, meta: '获取 · 提取 · 转写 · 总结' },
+    { label: '已完成', value: number(5), meta: '文稿与总结已保存' },
+    { label: '处理失败', value: number(6), meta: '需要你的关注', danger: true },
+  ];
   const filter = (key: string, value: string) => {
     setSearch(previous => { const next = new URLSearchParams(previous); next.delete('cursor'); value ? next.set(key, value) : next.delete(key); return next; });
   };
   return <>
-    <header className="topbar"><div><div className="eyebrow">YOUR VIDEO KNOWLEDGE, ORGANIZED</div><h1>视频任务<span className="count">{query.data?.total ?? '—'}</span></h1><p className="subtitle">从视频到文字，让每一帧都有价值。</p></div>
-      <button className="btn primary" onClick={() => setAdding(!adding)}>{adding ? '收起表单' : '＋ 添加视频'}</button></header>
-    <div className="notice"><strong>让内容沉淀下来</strong><span>上传本地视频或粘贴 B 站链接，自动生成完整文稿与结构化总结。</span></div>
-    <ErrorNotice error={capability.error}/>
-    {adding && <AddVideoForm maxBytes={capability.data?.uploadMaxBytes || 4 * 1024 ** 3} onDone={id => navigate('/videos/' + id)}/>}
-    <div className="toolbar"><label className="search-label"><span>搜索标题</span><input placeholder="搜索视频标题…" value={search.get('q') || ''} onChange={event => filter('q', event.target.value)}/></label>
-      <label><span className="sr-only">处理状态</span><select value={search.get('status') || ''} onChange={event => filter('status', event.target.value)}><option value="">全部状态</option>{statuses.map(status => <option key={status} value={status}>{names[status]}</option>)}</select></label>
+    <header className="topbar"><div><h1>视频任务</h1><p className="subtitle">把冗长视频，变成可检索、可复用的知识。</p></div>
+      <div className="top-actions"><div className="export-control"><a className="btn" href={'/api/v1/exports/videos.xlsx?' + exportQuery.toString()} download>⇩ 导出 Excel</a><details className="export-options"><summary aria-label="导出选项">⌄</summary><div className="export-popover"><strong>导出当前筛选结果</strong><label className="checkbox"><input type="checkbox" checked={exportHistory} onChange={event => setExportHistory(event.target.checked)}/>包含处理记录</label><p>超长单元格会标记截断，全文可在详情查看。</p></div></details></div><Link className="btn primary" to="/add">＋ 添加视频</Link></div></header>
+    <div className="stats">{stats.map(stat => <div className="stat" key={stat.label}><div className="stat-label">{stat.label}</div><div className={'stat-value' + (stat.danger ? ' stat-danger' : '')}>{stat.value === undefined ? '—' : String(stat.value).padStart(2, '0')}</div><div className="stat-meta">{stat.meta}</div></div>)}</div>
+    <ErrorNotice error={counts.find(item => item.error)?.error ?? null}/>
+    <div className="toolbar"><label className="search-label"><span aria-hidden="true">⌕</span><input aria-label="搜索视频标题" placeholder="搜索视频标题…" value={search.get('q') || ''} onChange={event => filter('q', event.target.value)}/></label>
       <select aria-label="视频来源" value={search.get('sourceType') || ''} onChange={event => filter('sourceType', event.target.value)}><option value="">全部来源</option>{Object.entries(sourceName).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-      <button className="btn" onClick={() => setSearch({})}>重置筛选</button></div>
-    <div className="actions"><a className="btn" href={'/api/v1/exports/videos.xlsx?' + exportQuery.toString()} download>导出筛选结果 Excel</a><label className="checkbox"><input type="checkbox" checked={exportHistory} onChange={event => setExportHistory(event.target.checked)}/>包含处理记录</label><small className="subtitle">超长文稿和总结会标记截断，全文可在详情查看。</small></div>
+      <select aria-label="处理状态" value={search.get('status') || ''} onChange={event => filter('status', event.target.value)}><option value="">全部状态</option>{statuses.map(status => <option key={status} value={status}>{names[status]}</option>)}</select>
+      <button className="btn small" onClick={() => setSearch({})}>重置</button></div>
     <ErrorNotice error={query.error}/>
     {search.has('creatorId') && <p className="notice">正在显示所选 UP 主已导入的视频。<Link to="/creators">返回 UP 主追踪 →</Link></p>}
-    <div className="table-wrap"><table><thead><tr><th>视频</th><th>来源</th><th>当前状态</th><th>创建时间</th><th>操作</th></tr></thead>
-      <tbody>{query.data?.items.map(video => <tr key={video.id}>
-        <td><Link className="video-link" to={'/videos/' + video.id}><span className="thumb">▷</span><span><strong>{video.title}</strong><small>{names[video.currentStage || ''] || '等待处理'}{video.latestErrorMessage ? ' · ' + video.latestErrorMessage : ''}</small></span></Link></td>
-        <td><span className="source">{sourceName[video.sourceType]}</span></td><td><Status status={video.overallStatus}/></td><td className="mono">{time(video.createdAt)}</td><td><Link className="btn small" to={'/videos/' + video.id}>查看详情 ↗</Link></td>
+    <div className="table-wrap video-table"><table><thead><tr><th>视频</th><th>来源</th><th>当前状态</th><th>创建时间</th><th><span className="sr-only">操作</span></th></tr></thead>
+      <tbody>{query.data?.items.map((video, index) => <tr key={video.id}>
+        <td><Link className="video-link" to={'/videos/' + video.id}><span aria-hidden="true" className={'thumb t' + (index % 4 + 1)}/><span className="video-copy"><strong title={video.title}>{video.title}</strong><small>{video.latestErrorMessage || (video.overallStatus === 'COMPLETED' ? '文稿与 AI 总结已保存' : names[video.overallStatus])}</small></span></Link></td>
+        <td><span className="source"><i className={'source-dot ' + (video.sourceType === 'BILIBILI' ? '' : 'local')}/>{sourceName[video.sourceType]}</span></td><td><Status status={video.overallStatus}/></td><td className="mono"><time dateTime={video.createdAt} title={time(video.createdAt)}>{new Date(video.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</time></td><td><Link className="icon-btn" aria-label={'查看详情：' + video.title} title="查看详情" to={'/videos/' + video.id}>↗</Link></td>
       </tr>)}</tbody></table>
       {query.isPending && <div className="empty">正在读取任务…</div>}
-      {query.data?.items.length === 0 && <div className="empty"><b>还没有匹配的任务</b><p>添加一个视频，开始整理内容。</p></div>}
+      {query.data?.items.length === 0 && <div className="empty"><b>还没有匹配的任务</b><p>添加一个视频，开始整理内容。</p><Link className="btn primary" to="/add">＋ 添加视频</Link></div>}
     </div>
-    <div className="pagination"><span>共 {query.data?.total ?? 0} 条任务 · 筛选条件保存在地址栏</span>{query.data?.nextCursor && <button className="btn" onClick={() => setSearch(previous => { const next = new URLSearchParams(previous); next.set('cursor', query.data!.nextCursor!); return next; })}>下一页 →</button>}{search.has('cursor') && <button className="btn" onClick={() => filter('cursor', '')}>返回首页</button>}</div>
+    <div className="pagination"><span>显示 {query.data?.items.length ?? 0} 条，共 {query.data?.total ?? 0} 条</span><div className="top-actions">{search.has('cursor') && <button className="btn small" onClick={() => filter('cursor', '')}>← 返回首页</button>}<button className="btn small" disabled={!query.data?.nextCursor} onClick={() => setSearch(previous => { const next = new URLSearchParams(previous); next.set('cursor', query.data!.nextCursor!); return next; })}>下一页 →</button></div></div>
   </>;
 }
 function CreateForm({ onDone }: { onDone: (id: string) => void }) {
