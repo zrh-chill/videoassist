@@ -5,6 +5,7 @@ import { mkdtemp } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import ExcelJS from 'exceljs';
 import { loadConfig, type AppConfig } from '../packages/config/src/index.js';
 import { createDatabase, initializeDatabase, type Database } from '../packages/database/src/client.js';
@@ -150,4 +151,23 @@ test('Excel 边界不会切断代理对，处理控制字符与空筛选结果',
     const book = new ExcelJS.Workbook(); await book.xlsx.load(response.rawPayload as never);
     assert.equal(book.getWorksheet('视频')!.rowCount, 1);
   } finally { await app.close(); }
+});
+
+test('无效工具配置不会阻止 Worker 启动，设置页可继续修复配置', async () => {
+  const child = spawn(process.execPath, ['--import', 'tsx', 'apps/worker/src/main.ts'], {
+    env: { ...process.env, DATA_DIR: config.dataDir, DATABASE_URL: config.databaseUrl, FFMPEG_PATH: path.join(config.dataDir, 'missing-ffmpeg.exe') },
+    windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let output = '';
+  const exited = new Promise<void>(resolve => child.once('exit', () => resolve()));
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Worker 未按时启动')), 15000);
+      child.once('error', error => { clearTimeout(timer); reject(error); });
+      child.once('exit', () => { clearTimeout(timer); reject(new Error('Worker 提前退出')); });
+      child.stdout.on('data', chunk => { output += String(chunk); if (output.includes('worker_started')) { clearTimeout(timer); resolve(); } });
+      child.stderr.on('data', chunk => { output += String(chunk); });
+    });
+    assert.ok(output.includes('media_tools_unavailable'));
+  } finally { child.kill(); await exited; }
 });
