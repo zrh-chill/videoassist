@@ -12,7 +12,8 @@ await initializeStorage(config.dataDir);
 const db = createDatabase(config.databaseUrl);
 await initializeDatabase(db);
 const settings = new Settings(db, config);
-await checkTools(await settings.effective());
+try { await checkTools(await settings.effective()); }
+catch { console.warn(JSON.stringify({ event: 'media_tools_unavailable', message: '媒体工具不可用，请在设置页修复并测试连接' })); }
 const shutdown = new AbortController();
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => shutdown.abort());
 console.log(JSON.stringify({ event: 'worker_started', mode: 'media', concurrency: 1 }));
