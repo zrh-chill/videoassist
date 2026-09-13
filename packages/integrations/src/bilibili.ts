@@ -71,3 +71,18 @@ export async function downloadBilibili(url: string, key: string, config: AppConf
     classifyBilibili(error);
   } finally { clearInterval(monitor); }
 }
+
+export async function resolveVideoCreator(bvid: string, request: typeof fetch = fetch) {
+  if (!/^BV[a-zA-Z0-9]{10}$/.test(bvid)) throw new DomainError('INVALID_BVID', '视频编号不正确');
+  try {
+    const response = await request('https://api.bilibili.com/x/web-interface/view?bvid=' + bvid, {
+      signal: AbortSignal.timeout(10000), redirect: 'error',
+      headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://www.bilibili.com/' },
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const data = z.object({ code: z.literal(0), data: z.object({ owner: z.object({
+      mid: z.number().int().positive(), name: z.string(),
+    }) }) }).parse(await response.json());
+    return { creatorUid: String(data.data.owner.mid), creatorName: data.data.owner.name };
+  } catch { throw new DomainError('CREATOR_LOOKUP_FAILED', '暂时无法获取 UP 主信息，请稍后重试', true, 502); }
+}
