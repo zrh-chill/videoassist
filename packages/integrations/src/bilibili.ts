@@ -54,7 +54,8 @@ export async function downloadBilibili(url: string, key: string, config: AppConf
       const sizes = await Promise.all(files.map(name => stat(path.join(path.dirname(file), name)).then(info => info.size).catch(() => 0)));
       // Merging temporarily retains both input streams and the output.
       if (sizes.reduce((total, size) => total + size, 0) > config.downloadMaxBytes * 2) { oversized = true; bounded.abort(); }
-    } finally { checking = false; }
+    } catch { bounded.abort(); }
+    finally { checking = false; }
   }, 500);
   try {
     await runTool(config.ytdlp, [...args(config), '--no-progress', '--max-filesize', String(config.downloadMaxBytes),
