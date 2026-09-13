@@ -139,6 +139,7 @@
 /* Keep real data, keyboard access and small screens compatible with the reference. */
 .main { max-width:1564px; }
 .topbar { height:auto; min-height:52px; gap:20px; }
+.topbar .subtitle { margin-bottom:0; }
 .eyebrow { display:none; }
 .nav-label { font-family:"DM Mono",monospace; }
 .system-label { margin-top:22px; }
@@ -224,8 +225,8 @@ input[type=checkbox] { accent-color:#24271f; }
 @media(max-width:600px) {
  .sidebar { padding:16px; gap:0; }
  .sidebar .brand { flex-basis:auto; margin:0 0 12px; padding:0; }
- .sidebar nav { display:flex; width:100%; gap:4px; overflow-x:auto; padding-bottom:3px; }
- .sidebar .nav-item { width:auto; flex-shrink:0; padding:10px; margin:0; font-size:12px; gap:6px; }
+ .sidebar nav { display:flex; flex-basis:100%; min-width:0; width:100%; gap:4px; overflow-x:auto; padding-bottom:3px; }
+ .sidebar .nav-item { width:auto; flex-shrink:0; padding:10px; margin:0; font-size:12px; gap:6px; white-space:nowrap; }
  .nav-label,.sidebar-foot,.nav-badge { display:none; }
  .sidebar .brand small { display:block; }
  .main { padding:24px 16px 36px; }
