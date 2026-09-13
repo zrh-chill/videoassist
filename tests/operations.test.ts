@@ -42,7 +42,7 @@ test('精简投稿列表补齐标题昵称，数量受限且伪造视频链接�
   let calls = 0;
   const providers = {
     runTool: async () => JSON.stringify({ entries: [{ id: 'BV17xo9BsEnx' }, { id: 'BV1JttL67Ek6' }] }),
-    bilibiliMetadata: async () => { calls++; return { title: '补齐标题', creatorName: '补齐昵称', durationMs: 1000 }; },
+    bilibiliMetadata: async () => { calls++; return { title: '补齐标题', creatorName: '补齐昵称', durationMs: 1000, publishedAt: undefined, coverUrl: undefined }; },
   };
   const result = await fetchCreatorVideos('12345', 1, config, signal(), providers);
   assert.equal(result.name, '补齐昵称'); assert.equal(result.videos[0]!.title, '补齐标题'); assert.equal(calls, 1);
