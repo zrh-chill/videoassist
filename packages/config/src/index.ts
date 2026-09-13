@@ -22,6 +22,9 @@ export function resolveSecret(reference: string): string {
 }
 export function loadConfig(overrides: NodeJS.ProcessEnv = {}) {
   const env = environment(overrides);
+  const aliases: Record<string, string> = { S2T_BASE_URL: 'S2T_API_URL', LLM_BASE_URL: 'write_API_URL', LLM_MODEL: 'write_MODEL' };
+  const lockedSettings = [...new Set([...Object.keys(env).filter(key => env[key] !== undefined && env[key] !== ''),
+    ...Object.entries(aliases).filter(([, alias]) => Boolean(env[alias])).map(([key]) => key)])];
   const parsed = z.object({
     APP_HOST: z.enum(['127.0.0.1', 'localhost', '::1']).default('127.0.0.1'),
     APP_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
@@ -45,6 +48,7 @@ export function loadConfig(overrides: NodeJS.ProcessEnv = {}) {
     keyRef: (kind === 'S2T' ? env.S2T_API_KEY_REF : env.LLM_API_KEY_REF) || (kind === 'S2T' ? 'env:S2T_API_KEY' : 'env:write_API_KEY'),
   });
   return {
+    lockedSettings,
     host: c.APP_HOST, port: c.APP_PORT, dataDir,
     databaseUrl: env.DATABASE_URL || 'file:' + path.join(dataDir, 'db', 'videoassist.sqlite').replaceAll('\\', '/'),
     simulation: c.ENABLE_SIMULATION === 'true', mockStageMs: c.MOCK_STAGE_MS,
