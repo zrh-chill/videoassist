@@ -41,7 +41,25 @@ export class Operations {
       const { latestLimit, autoProcess } = await trackingSettings(tx, { latestLimit: input.latestLimit ?? 5, autoProcess: input.autoProcess ?? true });
       const creator = await tx.creator.upsert({ where: { uid: normalized.uid }, create: { ...normalized, name: normalized.uid, latestLimit, autoProcess },
         update: { deletedAt: null, enabled: true, latestLimit, autoProcess } });
+      await tx.video.updateMany({ where: { creatorUid: creator.uid, isDeleted: false }, data: { creatorId: creator.id } });
       return { id: creator.id };
+    });
+  }
+  async trackVideo(videoId: string, key: string) {
+    return this.command(key, { action: 'track-video-creator', videoId }, async tx => {
+      const video = await tx.video.findFirst({ where: { id: videoId, isDeleted: false } });
+      if (!video) throw new DomainError('VIDEO_NOT_FOUND', '视频不存在', false, 404);
+      if (video.sourceType !== 'BILIBILI' || !video.creatorUid) throw new DomainError('CREATOR_UNKNOWN', '暂时无法识别该视频的 UP 主，请稍后重试', true, 409);
+      const normalized = normalizeCreator(video.creatorUid);
+      const { latestLimit, autoProcess } = await trackingSettings(tx);
+      const creator = await tx.creator.upsert({ where: { uid: normalized.uid },
+        create: { ...normalized, name: video.creatorName || normalized.uid, latestLimit, autoProcess },
+        update: { enabled: true, deletedAt: null, latestLimit, autoProcess } });
+      await tx.video.updateMany({ where: { creatorUid: creator.uid, isDeleted: false }, data: { creatorId: creator.id } });
+      const activeKey = 'CREATOR_CHECK:' + creator.id;
+      const check = await tx.operation.findUnique({ where: { activeKey } }) ||
+        await tx.operation.create({ data: { kind: 'CREATOR_CHECK', creatorId: creator.id, activeKey } });
+      return { id: creator.id, checkId: check.id };
     });
   }
   private async command<T>(key: string, input: unknown, execute: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
@@ -115,7 +133,7 @@ export class Operations {
           let added = 0;
           if (!error) {
             for (const video of data.videos) {
-              const imported = await importMedia(tx, { sourceType: 'BILIBILI', bvid: video.bvid, originalUrl: video.url, title: video.title, creatorId: creator.id, creatorName: data.name, autoProcess: creator.autoProcess });
+              const imported = await importMedia(tx, { sourceType: 'BILIBILI', bvid: video.bvid, originalUrl: video.url, title: video.title, creatorId: creator.id, creatorUid: creator.uid, creatorName: data.name, autoProcess: creator.autoProcess });
               if (!imported.duplicate) added++;
             }
             output = { found: data.videos.length, added, autoProcess: creator.autoProcess };
