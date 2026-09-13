@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
+import type { VideoPage } from '../../../packages/contracts/src/index';
 interface Creator { id: string; uid: string; name: string; url: string; latestLimit: number; autoProcess: boolean; enabled: boolean; lastCheckedAt: string | null; latestError: string | null }
 interface Operation { id: string; kind: string; status: string; attempt: number; createdAt: string; finishedAt: string | null; resultJson: string | null; errorMessage: string | null }
 const statusName: Record<string, string> = { QUEUED: '排队中', RUNNING: '执行中', SUCCEEDED: '成功', FAILED: '失败', CANCELED: '已取消' };
@@ -19,45 +20,74 @@ function History({ operations }: { operations: Operation[] }) {
 export function CreatorsPage() {
   const client = useQueryClient();
   const creators = useQuery({ queryKey: ['creators'], queryFn: () => api<Creator[]>('/creators'), refetchInterval: 5000 });
-  const [selected, setSelected] = useState('');
-  const checks = useQuery({ queryKey: ['creator-checks', selected], queryFn: () => api<Operation[]>('/creators/' + selected + '/checks'), enabled: Boolean(selected), refetchInterval: 3000 });
+  const [editor, setEditor] = useState<Creator | 'add' | null>(null);
   const [notice, setNotice] = useState('');
-  const add = useMutation({ mutationFn: (form: HTMLFormElement) => {
-    const values = new FormData(form);
-    return api<{ id: string }>('/creators', { source: values.get('source'), latestLimit: Number(values.get('limit')), autoProcess: values.has('auto') });
-  }, onSuccess: result => { setSelected(result.id); setNotice('追踪对象已保存，点击立即检查获取最新视频。'); void client.invalidateQueries({ queryKey: ['creators'] }); } });
+  const refresh = () => { void client.invalidateQueries({ queryKey: ['creators'] }); void client.invalidateQueries({ queryKey: ['creator-checks'] }); };
   const action = useMutation({ mutationFn: ({ id, name, body }: { id: string; name: 'check' | 'edit' | 'delete'; body?: unknown }) =>
     api('/creators/' + id + (name === 'check' ? '/actions/check' : ''), body || {}, name === 'edit' ? 'PATCH' : name === 'delete' ? 'DELETE' : 'POST'),
-    onSuccess: (_result, input) => { setSelected(input.id); setNotice(input.name === 'check' ? '检查任务已排队，结果将在下方更新。' : '追踪设置已更新，既有视频保留。'); void client.invalidateQueries({ queryKey: ['creators'] }); void client.invalidateQueries({ queryKey: ['creator-checks'] }); } });
+    onSuccess: (_result, input) => { setNotice(input.name === 'check' ? '检查任务已排队' : '追踪设置已更新'); refresh(); } });
+  const all = useMutation({ mutationFn: async () => {
+    let succeeded = 0; let failed = 0;
+    for (const creator of creators.data || []) if (creator.enabled) {
+      try { await api('/creators/' + creator.id + '/actions/check', {}); succeeded++; } catch { failed++; }
+    }
+    return { succeeded, failed };
+  }, onSuccess: result => { setNotice(`${result.succeeded} 个检查任务已排队${result.failed ? `，${result.failed} 个提交失败，请重试` : ''}`); refresh(); } });
   return <>
-    <header className="topbar"><div><div className="eyebrow">CREATORS / FOLLOWING</div><h1>UP 主追踪</h1></div></header>
-    <form className="panel creator-add" onSubmit={event => { event.preventDefault(); add.mutate(event.currentTarget); }}>
-      <label className="setting-field">UID 或主页链接<input name="source" required placeholder="https://space.bilibili.com/…" disabled={add.isPending}/></label>
-      <label className="setting-field">最新视频数量<input name="limit" type="number" min={1} max={50} defaultValue={5} required disabled={add.isPending}/></label>
-      <label className="checkbox"><input name="auto" type="checkbox" defaultChecked disabled={add.isPending}/>自动处理新增视频</label>
-      <button className="btn primary" disabled={add.isPending}>{add.isPending ? '正在添加…' : '添加追踪'}</button>
-    </form>
-    
-    {(creators.error || add.error || action.error || checks.error) && <p className="error" role="alert">{(creators.error || add.error || action.error || checks.error)?.message}</p>}
-    {notice && <p className="notice" role="status">{notice}</p>}
-    {!creators.data?.length && <div className="panel empty">还没有追踪对象，先添加一个 UP 主。</div>}
-    <div className="settings-grid">{creators.data?.map(creator => <CreatorCard key={creator.id + creator.latestLimit + creator.autoProcess + creator.enabled} creator={creator} pending={action.isPending}
-      onAction={(name, body) => action.mutate({ id: creator.id, name, body })} onHistory={() => setSelected(creator.id)}/>)}</div>
-    {selected && <section className="panel prompt-panel"><h2>最近检查记录</h2><History operations={checks.data || []}/></section>}
+    <header className="topbar"><h1>UP 主追踪</h1><div className="top-actions"><button className="btn" disabled={all.isPending || action.isPending || !creators.data?.some(item => item.enabled)} onClick={() => all.mutate()}>{all.isPending ? '正在提交…' : '↻ 全部检查'}</button><button className="btn primary" onClick={() => setEditor('add')}>＋ 添加 UP 主</button></div></header>
+    {(creators.error || action.error) && <p className="error" role="alert">{(creators.error || action.error)?.message}</p>}
+    {notice && <div className="creator-feedback" role="status">{notice}<button className="icon-btn" aria-label="关闭提示" onClick={() => setNotice('')}>×</button></div>}
+    {creators.isPending && <div className="panel empty">正在读取追踪对象…</div>}
+    {creators.data?.length === 0 && <div className="panel empty"><b>暂无追踪的 UP 主</b><div className="empty-action"><button className="btn primary" onClick={() => setEditor('add')}>＋ 添加 UP 主</button></div></div>}
+    <div className="creator-list">{creators.data?.map(creator => <CreatorCard key={creator.id} creator={creator} pending={action.isPending || all.isPending}
+      onAction={(name, body) => action.mutate({ id: creator.id, name, body })} onEdit={() => setEditor(creator)}/>)}</div>
+    {editor && <CreatorEditor key={editor === 'add' ? 'add' : editor.id} creator={editor === 'add' ? null : editor} onClose={() => setEditor(null)} onSaved={id => {
+      refresh(); setEditor(null); if (editor === 'add') action.mutate({ id, name: 'check' }); else setNotice('追踪设置已保存');
+    }}/>}
   </>;
 }
-function CreatorCard({ creator, pending, onAction, onHistory }: { creator: Creator; pending: boolean; onAction: (name: 'check' | 'edit' | 'delete', body?: unknown) => void; onHistory: () => void }) {
-  const [limit, setLimit] = useState(creator.latestLimit); const [auto, setAuto] = useState(creator.autoProcess);
-  return <section className="panel"><h2>{creator.name}</h2><p className="subtitle">UID {creator.uid} · {creator.enabled ? '已启用' : '已暂停'}</p><a href={creator.url} target="_blank" rel="noreferrer">打开主页 ↗</a>
-    <label className="setting-field">检查数量<input type="number" min={1} max={50} value={limit} disabled={pending} onChange={event => setLimit(Number(event.target.value))}/></label>
-    <label className="checkbox"><input type="checkbox" checked={auto} disabled={pending} onChange={event => setAuto(event.target.checked)}/>自动处理</label>
-    <div className="actions"><button className="btn primary" disabled={pending || !creator.enabled} onClick={() => onAction('check')}>立即检查</button>
-      <button className="btn" disabled={pending || !Number.isInteger(limit) || limit < 1 || limit > 50} onClick={() => onAction('edit', { latestLimit: limit, autoProcess: auto })}>保存选项</button>
-      <button className="btn" disabled={pending} onClick={() => onAction('edit', { enabled: !creator.enabled })}>{creator.enabled ? '暂停追踪' : '启用追踪'}</button>
-      <button className="btn danger" disabled={pending} onClick={() => { if (window.confirm('停止追踪该 UP 主？已导入视频和检查记录会保留。')) onAction('delete'); }}>停止追踪</button></div>
-    <div className="media-tabs"><button className="btn" onClick={onHistory}>查看检查记录</button><Link className="btn" to={'/?creatorId=' + creator.id}>查看已导入视频</Link></div>
-    <p className="result-meta">{creator.lastCheckedAt ? '上次检查：' + new Date(creator.lastCheckedAt).toLocaleString('zh-CN') : '尚未检查'}</p>
-    {creator.latestError && <p className="error">{creator.latestError}</p>}
+function CreatorEditor({ creator, onClose, onSaved }: { creator: Creator | null; onClose: () => void; onSaved: (id: string) => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => { const element = dialog.current!; element.showModal(); return () => element.close(); }, []);
+  const save = useMutation({ mutationFn: async (form: HTMLFormElement) => {
+    const values = new FormData(form); const body = { latestLimit: Number(values.get('limit')), autoProcess: values.has('auto') };
+    if (creator) { await api('/creators/' + creator.id, body, 'PATCH'); return { id: creator.id }; }
+    return api<{ id: string }>('/creators', { ...body, source: values.get('source') });
+  }, onSuccess: result => onSaved(result.id) });
+  return <dialog ref={dialog} className="creator-modal" aria-labelledby="creator-modal-title" onCancel={event => { event.preventDefault(); if (!save.isPending) onClose(); }} onClick={event => { if (event.target === event.currentTarget && !save.isPending) { const r = event.currentTarget.getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) onClose(); } }}>
+    <form onSubmit={event => { event.preventDefault(); save.mutate(event.currentTarget); }}><div className="modal-head"><h2 id="creator-modal-title">{creator ? '追踪设置' : '添加 UP 主'}</h2><button type="button" className="icon-btn" aria-label="关闭弹窗" disabled={save.isPending} onClick={onClose}>×</button></div>
+      <div className="modal-body">{!creator && <label className="setting-field">主页链接或 UID<input name="source" required autoFocus placeholder="https://space.bilibili.com/123456" disabled={save.isPending}/></label>}
+      <label className="setting-field">每次获取最新视频数<input name="limit" type="number" min={1} max={50} defaultValue={creator?.latestLimit ?? 5} required disabled={save.isPending}/></label>
+      <label className="checkbox"><input name="auto" type="checkbox" defaultChecked={creator?.autoProcess ?? true} disabled={save.isPending}/>发现新视频后自动处理</label>
+      {save.error && <p className="error" role="alert">{save.error.message}</p>}</div><div className="modal-foot"><button type="button" className="btn" disabled={save.isPending} onClick={onClose}>取消</button><button className="btn primary" disabled={save.isPending}>{save.isPending ? '正在保存…' : creator ? '保存设置' : '添加并检查'}</button></div>
+    </form></dialog>;
+}
+const videoState: Record<string, string> = { COMPLETED: '已完成', FAILED: '处理失败', CANCELED: '已取消', DISCOVERED: '待处理', WAITING: '等待处理', FETCHING: '获取中', EXTRACTING_AUDIO: '提取中', TRANSCRIBING: '转写中', SUMMARIZING: '总结中' };
+function CreatorCard({ creator, pending, onAction, onEdit }: { creator: Creator; pending: boolean; onAction: (name: 'check' | 'edit' | 'delete', body?: unknown) => void; onEdit: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [history, setHistory] = useState(false);
+  const videos = useQuery({ queryKey: ['videos', 'creator-preview', creator.id], queryFn: () => api<VideoPage>('/videos?creatorId=' + creator.id + '&limit=3'), refetchInterval: 5000 });
+  const checks = useQuery({ queryKey: ['creator-checks', creator.id], queryFn: () => api<Operation[]>('/creators/' + creator.id + '/checks'), refetchInterval: 3000 });
+  const active = checks.data?.some(item => ['RUNNING', 'QUEUED'].includes(item.status));
+  return <section className={'creator-group' + (open ? ' open' : '')}>
+    <div className="creator-card"><a className="avatar" href={creator.url} target="_blank" rel="noreferrer" aria-label={'打开 ' + creator.name + ' 主页'}>{creator.name.slice(0, 1)}</a>
+      <div className="creator-identity"><h3><a href={creator.url} target="_blank" rel="noreferrer">{creator.name}</a></h3><p>UID {creator.uid} · {creator.lastCheckedAt ? '上次检查 ' + new Date(creator.lastCheckedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '尚未检查'} · {creator.enabled ? (creator.autoProcess ? '自动处理已开启' : '手动处理') : '已暂停'}</p></div>
+      <div className="creator-stat"><b>{videos.data?.total ?? '—'}</b><span>已导入</span></div>
+      <button className="btn small" disabled={pending || active || !creator.enabled} onClick={() => onAction('check')}>{active ? '检查中…' : '立即检查'}</button>
+      <button className="btn small creator-toggle" aria-expanded={open} aria-controls={'creator-videos-' + creator.id} onClick={() => setOpen(!open)}>视频记录 <span className="chevron">⌄</span></button>
+      <button className="icon-btn" aria-label={'设置 ' + creator.name} title="追踪设置" disabled={pending} onClick={onEdit}>⚙</button>
+    </div>
+    {creator.latestError && <p className="creator-inline-error">{creator.latestError}</p>}
+    {(videos.error || checks.error) && <p className="error" role="alert">{(videos.error || checks.error)?.message}</p>}
+    <div className="creator-reveal" inert={!open}><div><div className="creator-videos" id={'creator-videos-' + creator.id}>
+      <div className="creator-videos-head"><span>已导入的视频 · 最近 {videos.data?.items.length ?? 0} 条</span><Link to={'/?creatorId=' + creator.id}>全部视频 ↗</Link></div>
+      {videos.isPending ? <div className="creator-empty">正在读取视频…</div> : !videos.data?.items.length ? <div className="creator-empty">暂无视频记录</div> : videos.data.items.map(video => <div className="creator-video-row" key={video.id}>
+        <div className="creator-video-main"><Link className="creator-video-title" to={'/videos/' + video.id}>{video.title}</Link><div className="creator-video-meta">{video.durationMs == null ? '时长未知' : Math.floor(video.durationMs / 60000) + ':' + String(Math.floor(video.durationMs / 1000) % 60).padStart(2, '0')}</div></div>
+        <span className={'status ' + (video.overallStatus === 'COMPLETED' ? 'done' : video.overallStatus === 'FAILED' ? 'failed' : ['WAITING', 'DISCOVERED', 'CANCELED'].includes(video.overallStatus) ? 'waiting' : 'running')}>{videoState[video.overallStatus] || video.overallStatus}</span>
+        <span className="date">{new Date(video.createdAt).toLocaleDateString('zh-CN')}</span><Link className="icon-btn" aria-label={'查看详情：' + video.title} to={'/videos/' + video.id}>↗</Link></div>)}
+      <div className="creator-secondary"><button className="btn small" aria-expanded={history} onClick={() => setHistory(!history)}>检查记录 {history ? '⌃' : '⌄'}</button><button className="btn small" disabled={pending} onClick={() => onAction('edit', { enabled: !creator.enabled })}>{creator.enabled ? '暂停追踪' : '启用追踪'}</button><button className="btn small danger" disabled={pending} onClick={() => { if (window.confirm('停止追踪该 UP 主？已导入视频和检查记录会保留。')) onAction('delete'); }}>停止追踪</button></div>
+      {history && <History operations={checks.data || []}/>}
+    </div></div></div>
   </section>;
 }
 export function MaintenancePage() {
