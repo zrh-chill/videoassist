@@ -18,6 +18,7 @@ import { describeFile } from '../packages/storage/src/media.js';
 import { backupWorkspace, cleanupWorkspace, checkedFile } from '../packages/storage/src/maintenance.js';
 import { createLogger, redactLog } from '../packages/storage/src/logging.js';
 import { createApp } from '../apps/api/src/app.js';
+import { restoreBackup } from '../scripts/restore.js';
 let db: Database; let config: AppConfig; let operations: Operations;
 const found: CreatorVideos = { name: '测试 UP', videos: [{ bvid: 'BV17xo9BsEnx', title: '测试投稿', url: 'https://www.bilibili.com/video/BV17xo9BsEnx/' }] };
 beforeEach(async () => {
@@ -102,12 +103,16 @@ test('在线备份可读取恢复，媒体哈希与快照一致，重试复用�
   const key = 'videos/' + video.id + '/source/original.mp4'; await oldFile(key);
   await db.$transaction(tx => persistMedia(tx, video.id, { artifact: undefined, transcript: { fullText: '备份文稿', language: 'zh', provider: 'test', model: 'test', durationMs: 1, timestampPrecision: 'CHUNK', segments: [] } }));
   const artifact = await describeFile(config.dataDir, key, 'SOURCE_VIDEO', 'video/mp4'); await db.$transaction(tx => persistMedia(tx, video.id, { artifact }));
-  const id = randomUUID(); const result = await backupWorkspace(db, config, id, signal());
+  const id = (await operations.enqueue('BACKUP', randomUUID())).id; await operations.claim('backup-owner');
+  const result = await backupWorkspace(db, config, id, signal());
   assert.equal(result.files, 1); assert.equal(result.videos, 1);
   const directory = resolveStorageKey(config.dataDir, result.storageKey);
-  const restored = path.join(config.dataDir, 'db/restored.sqlite'); await copyFile(path.join(directory, 'db/videoassist.sqlite'), restored);
+  const restoredRoot = path.join(config.dataDir, 'restored'); await restoreBackup(directory, restoredRoot);
+  await assert.rejects(restoreBackup(directory, restoredRoot), { code: 'RESTORE_TARGET_NOT_EMPTY' });
+  const restored = path.join(restoredRoot, 'db/videoassist.sqlite');
   const restoreDb = createDatabase('file:' + restored.replaceAll('\\', '/'));
-  try { await initializeDatabase(restoreDb); assert.equal((await restoreDb.transcript.findFirst())!.fullText, '备份文稿'); assert.equal(await restoreDb.artifact.count(), 1); } finally { await restoreDb.$disconnect(); }
+  try { await initializeDatabase(restoreDb); assert.equal((await restoreDb.transcript.findFirst())!.fullText, '备份文稿'); assert.equal(await restoreDb.artifact.count(), 1); assert.equal((await restoreDb.operation.findUniqueOrThrow({ where: { id } })).status, 'CANCELED'); } finally { await restoreDb.$disconnect(); }
+  assert.equal((await db.operation.findUniqueOrThrow({ where: { id } })).status, 'RUNNING');
   assert.equal((await describeFile(directory, key, 'SOURCE_VIDEO', 'video/mp4')).sha256, artifact.sha256);
   const duplicate = await backupWorkspace(db, config, id, signal()); assert.equal(duplicate.createdAt, result.createdAt);
   assert.ok(!(await readFile(path.join(directory, 'runtime-config.json'), 'utf8')).includes('S2T_API_KEY":'));
