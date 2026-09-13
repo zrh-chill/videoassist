@@ -32,12 +32,30 @@ export async function persistMedia(tx: Prisma.TransactionClient, videoId: string
     } });
   }
 }
+export interface ImportInput {
+  id?: string; sourceType: 'LOCAL' | 'BILIBILI'; title: string; bvid?: string; originalUrl?: string;
+  localOriginalName?: string; durationMs?: number; sourceHash?: string; artifact?: MediaArtifact;
+  creatorId?: string; creatorName?: string; autoProcess?: boolean;
+}
+export async function importMedia(tx: Prisma.TransactionClient, input: ImportInput) {
+  const { artifact, autoProcess = true, ...videoData } = input;
+  const existing = input.bvid ? await tx.video.findUnique({ where: { sourceType_bvid: { sourceType: 'BILIBILI', bvid: input.bvid } } }) : null;
+  if (existing) {
+    if (input.creatorId && !existing.creatorId) await tx.video.update({ where: { id: existing.id }, data: { creatorId: input.creatorId } });
+    return { id: existing.id, duplicate: true };
+  }
+  const stage = input.sourceType === 'LOCAL' ? 'EXTRACT_AUDIO' : 'FETCH';
+  const status = autoProcess ? 'WAITING' : 'DISCOVERED';
+  const video = await tx.video.create({ data: { ...videoData, currentStage: autoProcess ? stage : null, overallStatus: status } });
+  if (artifact) await persistMedia(tx, video.id, { artifact });
+  if (autoProcess) await tx.job.create({ data: { videoId: video.id, stage, inputFingerprint: fingerprint({ stage, input: artifact?.sha256 || input.bvid, version: 'media-v1' }) } });
+  await tx.event.create({ data: { videoId: video.id, payload: JSON.stringify({ videoId: video.id, status, stage: autoProcess ? stage : null }) } });
+  const sameFile = input.sourceHash ? await tx.video.count({ where: { sourceHash: input.sourceHash, id: { not: video.id } } }) : 0;
+  return { id: video.id, duplicate: Boolean(sameFile) };
+}
 export class MediaLibrary {
   constructor(public db: Database) {}
-  async importVideo(input: {
-    id?: string; sourceType: 'LOCAL' | 'BILIBILI'; title: string; bvid?: string; originalUrl?: string;
-    localOriginalName?: string; durationMs?: number; sourceHash?: string; artifact?: MediaArtifact;
-  }, key: string) {
+  async importVideo(input: ImportInput, key: string) {
     const { artifact, ...videoData } = input;
     const hash = fingerprint({ ...videoData, id: undefined });
     return this.db.$transaction(async tx => {
@@ -47,24 +65,33 @@ export class MediaLibrary {
         if (prior.fingerprint !== hash) throw new DomainError('IDEMPOTENCY_CONFLICT', '请求键已用于其他内容', false, 409);
         return JSON.parse(prior.responseJson) as { id: string; duplicate: boolean };
       }
-      const existing = input.bvid ? await tx.video.findUnique({ where: { sourceType_bvid: { sourceType: 'BILIBILI', bvid: input.bvid } } }) : null;
-      let id = existing?.id;
-      if (!id) {
-        const stage = input.sourceType === 'LOCAL' ? 'EXTRACT_AUDIO' : 'FETCH';
-        const video = await tx.video.create({ data: { ...videoData, currentStage: stage } });
-        id = video.id;
-        if (artifact) await persistMedia(tx, id, { artifact });
-        await tx.job.create({ data: { videoId: id, stage, inputFingerprint: fingerprint({ stage, input: artifact?.sha256 || input.bvid, version: 'media-v1' }) } });
-        await tx.event.create({ data: { videoId: id, payload: JSON.stringify({ videoId: id, status: 'WAITING', stage }) } });
-      }
-      const sameFile = input.sourceHash ? await tx.video.count({ where: { sourceHash: input.sourceHash, id: { not: id } } }) : 0;
-      const result = { id, duplicate: Boolean(existing || sameFile) };
+      const result = await importMedia(tx, input);
       await tx.command.create({ data: { key, fingerprint: hash, responseJson: JSON.stringify(result), expiresAt: new Date(Date.now() + 86400000) } });
       return result;
     });
   }
   async regenerateSummary(videoId: string, key: string) {
     return this.reprocess(videoId, { stage: 'SUMMARIZE', force: true, reason: '用户重新生成总结' }, key);
+  }
+  async start(videoId: string, key: string) {
+    return this.db.$transaction(async tx => {
+      await tx.command.deleteMany({ where: { expiresAt: { lt: new Date() } } });
+      const hash = fingerprint({ action: 'start-discovered', videoId });
+      const prior = await tx.command.findUnique({ where: { key } });
+      if (prior) {
+        if (prior.fingerprint !== hash) throw new DomainError('IDEMPOTENCY_CONFLICT', '请求键已用于其他内容', false, 409);
+        return JSON.parse(prior.responseJson);
+      }
+      const video = await tx.video.findUnique({ where: { id: videoId } });
+      if (!video) throw new DomainError('VIDEO_NOT_FOUND', '视频不存在', false, 404);
+      if (video.overallStatus !== 'DISCOVERED') throw new DomainError('INVALID_TRANSITION', '仅待处理的新发现视频可以开始处理', false, 409);
+      await tx.video.update({ where: { id: videoId }, data: { overallStatus: 'WAITING', currentStage: 'FETCH' } });
+      await tx.job.create({ data: { videoId, stage: 'FETCH', inputFingerprint: fingerprint({ videoId, start: true }) } });
+      await tx.event.create({ data: { videoId, payload: JSON.stringify({ videoId, status: 'WAITING', stage: 'FETCH' }) } });
+      const result = { id: videoId };
+      await tx.command.create({ data: { key, fingerprint: hash, responseJson: JSON.stringify(result), expiresAt: new Date(Date.now() + 86400000) } });
+      return result;
+    });
   }
   async reprocess(videoId: string, input: { stage: 'FETCH' | 'EXTRACT_AUDIO' | 'TRANSCRIBE' | 'SUMMARIZE'; force: true; reason: string }, key: string) {
     return this.db.$transaction(async tx => {
