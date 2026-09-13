@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "sqlite"
+  url = env("DATABASE_URL")
+}
+model Video {
+  id String @id @default(uuid())
+  title String
+  sourceType String @default("SIMULATION")
+  bvid String?
+  overallStatus String @default("WAITING")
+  currentStage String?
+  latestErrorCode String?
+  latestErrorMessage String?
+  optionsJson String @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  jobs Job[]
+  runs StageRun[]
+  results StageResult[]
+  @@unique([sourceType, bvid])
+  @@index([overallStatus, createdAt])
+  @@index([createdAt, id])
+}
+model Job {
+  id String @id @default(uuid())
+  videoId String
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  stage String
+  status String @default("QUEUED")
+  attempt Int @default(0)
+  maxAttempts Int @default(3)
+  availableAt DateTime @default(now())
+  leaseOwner String?
+  leaseExpiresAt DateTime?
+  inputFingerprint String
+  cancelRequestedAt DateTime?
+  lastErrorCode String?
+  lastErrorMessage String?
+  createdAt DateTime @default(now())
+  startedAt DateTime?
+  finishedAt DateTime?
+  runs StageRun[]
+  @@index([status, availableAt])
+  @@index([videoId, status])
+}
+model StageRun {
+  id String @id @default(uuid())
+  videoId String
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  jobId String
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  stage String
+  attempt Int
+  status String
+  startedAt DateTime @default(now())
+  finishedAt DateTime?
+  errorCode String?
+  errorMessage String?
+  outputJson String?
+  @@unique([jobId, attempt])
+  @@index([videoId, startedAt])
+}
+model StageResult {
+  id String @id @default(uuid())
+  videoId String
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  stage String
+  inputFingerprint String
+  outputJson String
+  createdAt DateTime @default(now())
+  @@unique([videoId, stage, inputFingerprint])
+}
+model Event {
+  id Int @id @default(autoincrement())
+  videoId String
+  payload String
+  createdAt DateTime @default(now())
+}
+model WorkerLease {
+  id String @id
+  owner String?
+  expiresAt DateTime
+}
+model Command {
+  key String @id
+  fingerprint String
+  responseJson String
+  expiresAt DateTime
+}
