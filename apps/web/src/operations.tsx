@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
+import { ConfirmDialog } from './dialog';
 import { VideoTable } from './video-table';
 import type { VideoPage } from '../../../packages/contracts/src/index';
 interface Creator { id: string; uid: string; name: string; url: string; latestLimit: number; autoProcess: boolean; enabled: boolean; lastCheckedAt: string | null; latestError: string | null }
@@ -24,6 +25,7 @@ export function CreatorsPage() {
   const [editor, setEditor] = useState<'settings' | 'add' | null>(null);
   const settings = useQuery({ queryKey: ['tracking-settings'], queryFn: () => api<TrackingSettings>('/creators/settings'), refetchInterval: false });
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [stopping, setStopping] = useState<Creator | null>(null);
   const [historyCreator, setHistoryCreator] = useState<Creator | null>(null);
   const [notice, setNotice] = useState('');
   const refresh = () => { void client.invalidateQueries({ queryKey: ['tracking-settings'] }); void client.invalidateQueries({ queryKey: ['creators'] }); void client.invalidateQueries({ queryKey: ['creator-checks'] }); };
@@ -44,10 +46,11 @@ export function CreatorsPage() {
     {creators.isPending && <div className="panel empty">正在读取追踪对象…</div>}
     {creators.data?.length === 0 && <div className="panel empty"><b>暂无追踪的 UP 主</b><div className="empty-action"><button className="btn primary" onClick={() => setEditor('add')}>＋ 添加 UP 主</button></div></div>}
     <div className="creator-list">{creators.data?.map(creator => <CreatorCard key={creator.id} creator={creator} open={!collapsed[creator.id]} onToggle={() => setCollapsed(previous => ({ ...previous, [creator.id]: !previous[creator.id] }))} onHistory={() => setHistoryCreator(creator)} pending={action.isPending || all.isPending}
-      onAction={(name, body) => action.mutate({ id: creator.id, name, body })}/>)}</div>
+      onAction={(name, body) => name === 'delete' ? setStopping(creator) : action.mutate({ id: creator.id, name, body })}/>)}</div>
     {editor && <CreatorEditor mode={editor} settings={settings.data} onClose={() => setEditor(null)} onSaved={id => {
       refresh(); setEditor(null); if (id) setCollapsed(previous => ({ ...previous, [id]: false })); setNotice(editor === 'add' ? 'UP 主已添加' : '全局追踪设置已保存');
     }}/>}
+    {stopping && <ConfirmDialog title="停止追踪 UP 主" confirmLabel="停止追踪" onClose={() => setStopping(null)} onConfirm={() => action.mutateAsync({ id: stopping.id, name: 'delete' })}>停止追踪「{stopping.name}」？已导入的视频和检查记录会保留。</ConfirmDialog>}
     {historyCreator && <CreatorHistory creator={historyCreator} onClose={() => setHistoryCreator(null)}/>}
   </>;
 }
@@ -91,8 +94,8 @@ function CreatorCard({ creator, pending, open, onToggle, onHistory, onAction }: 
         <button className="btn small" disabled={pending || active || !creator.enabled} onClick={() => onAction('check')}>{active ? '检查中…' : '立即检查'}</button>
         <button className="btn small creator-toggle" aria-expanded={open} aria-controls={'creator-videos-' + creator.id} onClick={onToggle}>视频记录 <span className="chevron">⌄</span></button>
         <button className="btn small" onClick={onHistory}>检查记录</button>
-        <button className="btn small" disabled={pending} onClick={() => onAction('edit', { enabled: !creator.enabled })}>{creator.enabled ? '暂停追踪' : '启用追踪'}</button>
-        <button className="btn small danger" disabled={pending} onClick={() => { if (window.confirm('停止追踪该 UP 主？已导入视频和检查记录会保留。')) onAction('delete'); }}>停止追踪</button>
+        <button className={'btn small track-button ' + (creator.enabled ? 'is-tracking' : 'is-untracked')} disabled={pending} onClick={() => onAction('edit', { enabled: !creator.enabled })}>{creator.enabled ? '暂停追踪' : '启用追踪'}</button>
+        <button className="btn small danger" disabled={pending} onClick={() => onAction('delete')}>停止追踪</button>
       </div>
     </div>
     {creator.latestError && <p className="creator-inline-error">{creator.latestError}</p>}
