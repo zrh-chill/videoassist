@@ -2,7 +2,8 @@ import path from 'node:path';
 import { mkdir, appendFile, stat } from 'node:fs/promises';
 import { checkedFile } from './maintenance.js';
 export function redactLog(value: string) {
-  return value.replace(/Bearer\s+[^\s"']+/gi, 'Bearer [REDACTED]')
+  return value.replace(/\b(?:cookie|set-cookie|authorization)\s*[:=]\s*[^\r\n]+/gi, '[HEADER REDACTED]')
+    .replace(/Bearer\s+[^\s"']+/gi, 'Bearer [REDACTED]')
     .replace(/\bsk-[A-Za-z0-9_-]+/g, '[REDACTED]')
     .replace(/((?:api[_-]?key|authorization|cookie|password|token)\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
     .replace(/https?:\/\/[^\s"']+/g, raw => { try { const url = new URL(raw); url.username = ''; url.password = ''; url.search = ''; url.hash = ''; return url.href; } catch { return '[URL]'; } }).slice(0, 4000);
@@ -14,7 +15,7 @@ export function createLogger(root: string, role: 'api' | 'worker', maxBytes = 5 
       const now = new Date(); const date = now.toISOString().slice(0, 10);
       if (day !== date) { day = date; sequence = 0; }
       await mkdir(path.join(root, 'logs'), { recursive: true }); await checkedFile(root, 'logs');
-      const safe = Object.fromEntries(Object.entries(record).filter(([key]) => !/key|authorization|cookie|password|token|body|prompt/i.test(key)).map(([key, value]) => [key, typeof value === 'string' ? redactLog(value) : value]));
+      const safe = Object.fromEntries(Object.entries(record).filter(([key]) => !/key|authorization|cookie|password|token|body|prompt/i.test(key)).map(([key, value]) => [key, typeof value === 'string' ? redactLog(value) : typeof value === 'number' || typeof value === 'boolean' || value == null ? value : '[OBJECT OMITTED]']));
       const line = JSON.stringify({ at: now.toISOString(), ...safe }) + '\n';
       let file: string;
       while (true) {
