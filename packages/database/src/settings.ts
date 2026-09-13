@@ -7,7 +7,7 @@ import { settingsSchema, type SettingsValues, type SettingsDto, type TestKind, t
 import { DomainError, fingerprint } from '../../domain/src/index.js';
 
 async function ensure(tx: Prisma.TransactionClient) {
-  return tx.systemSettings.upsert({ where: { id: 'singleton' }, create: {}, update: {} });
+  return tx.systemSettings.upsert({ where: { id: 'singleton' }, create: {}, update: { id: 'singleton' } });
 }
 async function promptVersion(tx: Prisma.TransactionClient, name: string, body: string) {
   const hash = fingerprint(body);
@@ -34,7 +34,12 @@ export class Settings {
         let configured: boolean | undefined;
         if (secret) { try { if (key === 'BILIBILI_COOKIE_FILE_REF') { if (!value) throw Error(); await readFile(String(value).slice(5)); } else resolveSecret(String(value)); configured = true; } catch { configured = false; } }
         // Never echo secret references (including local secret-file paths) or resolved values.
-        return { key, value: secret ? null : value,
+        let visible = value;
+        if (key.endsWith('_BASE_URL')) {
+          try { const url = new URL(String(value)); url.username = ''; url.password = ''; url.search = ''; url.hash = ''; visible = url.toString(); }
+          catch { visible = ''; }
+        }
+        return { key, value: secret ? null : visible,
           source: this.base.lockedSettings.includes(key) ? 'environment' as const : key in saved ? 'database' as const : 'default' as const,
           secret, configured, referenceType: secret ? String(value).split(':')[0] || '未配置' : undefined };
       })),
